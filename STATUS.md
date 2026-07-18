@@ -2,12 +2,26 @@
 
 ## K9 — Call Center UI (Owner A) — IN PROGRESS on `call-center-ui` branch
 
-Build order: ① types+mocks+api ✓ → ② useCallCenter hook ✓ → ③ components
-(DealerCard, CallStatusPanel, TranscriptStream, AudioPlayer, QuoteChip) →
-④ page `/calls/[spec_id]` + layout → ⑤ verify + docs. **Currently at: end of
-②, awaiting A's state-machine sanity check before ③.** If picking this up
-cold: read `frontend/lib/useCallCenter.ts` (the whole lifecycle lives there),
-then build ③ against `stateFor(dealerId)`.
+Build order: ① types+mocks+api ✓ → ② useCallCenter hook ✓ (state machine
+approved by A) → ③ components ✓ (`components/calls/`: StateBadge, DealerCard,
+TranscriptStream, AudioPlayer, QuoteChip, CallStatusPanel) → ④ page ✓
+(`app/calls/[spec_id]/page.tsx` + `app/calls/layout.tsx`, auth-guarded, same
+nav pattern) → ⑤ verify + docs — **IN PROGRESS, resume here.**
+
+⑤ checkpoint — done so far: `tsc` clean, `eslint` clean (after removing an
+unused eslint-disable in AudioPlayer), `next build` clean (route
+`ƒ /calls/[spec_id]` present). Still to do, in order:
+1. Browser/dev-server smoke test of `/calls/spec_mock_001` in mock mode:
+   Call all → statuses walk (calling 2s → live → transcript streams → done)
+   → stonewaller shows Declined chip (no quote), other three show QuoteChip
+   + audio player; per-dealer retry from failed; 375px layout check.
+2. If smoke passes: mark K9 done in CLAUDE.md table + HTML plan tile/row
+   (same commit), fold this section's assumptions into the K9-done note.
+3. Commit remaining work + push `call-center-ui`, then merge to main on A's
+   go (same flow as auth-ui).
+Roleplay widget embed + live-audio WS player remain out of v1 (assumptions
+2/3 below). Timeout hint: ticker caps at 3:00, shows "call timed out?" when
+live past 180s (backend MAX_CALL_SECONDS).
 
 Assumptions made while B slept:
 1. No live transcript text exists backend-side — text lands complete in
