@@ -19,3 +19,5 @@ services:
         sync: false
       - key: BACKEND_BASE_URL
         sync: false
+      - key: TOOLS_WEBHOOK_SECRET
+        sync: false
