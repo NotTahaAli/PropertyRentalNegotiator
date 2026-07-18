@@ -7,12 +7,6 @@ an item; delete resolved items instead of checking them off.
 
 ## Blocked: frontend K8 → backend wiring
 
-- **`OPENAI_API_KEY` on Render** — K6 `/parse` is live-verified locally and
-  `parseDoc` already sends the bearer token (K13), but the deployed backend
-  at negotiator-backend.onrender.com has no `OPENAI_API_KEY` env var yet —
-  deployed `/parse` will 500/502 until it's set (secret, set by hand in the
-  Render dashboard or API).
-
 - **Dealer seeding on spec create** — `POST /specs` is now fully wired from
   the frontend (auth token + shape adapter in `frontend/lib/api.ts`: wraps
   the flat `JobSpec` into `spec_json`, unwraps the returned row into
@@ -36,6 +30,9 @@ an item; delete resolved items instead of checking them off.
 
 - Merge priority for `location` in the K8 intake merge logic: confirmed
   voice-wins (matches the existing code and mock data, no change needed).
+- `OPENAI_API_KEY` set on Render (and Supabase env vars on Vercel). Deployed
+  `/parse` live-verified: 401 without token; sample PDF returns only stated
+  fields; blank image returns empty spec.
 - Real Estimator agent id: obtained from the live make_agents run, now in
   `frontend/.env.local` (public id, not a secret). Backend deployed to
   https://negotiator-backend.onrender.com (`/health` 200, `/specs` 401
