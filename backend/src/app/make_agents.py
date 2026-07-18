@@ -54,33 +54,56 @@ def _agent_def_to_conversation_config(agent_def, tool_ids: dict):
     return ConversationalConfig(agent=agent_config)
 
 
+def _find_existing_tool_id(client, name: str) -> str | None:
+    for tool in client.conversational_ai.tools.list(search=name).tools:
+        if getattr(tool.tool_config, "name", None) == name:
+            return tool.id
+    return None
+
+
+def _find_existing_agent_id(client, name: str) -> str | None:
+    for agent in client.conversational_ai.agents.list(search=name).agents:
+        if agent.name == name:
+            return agent.agent_id
+    return None
+
+
 def upsert_all(
     client,
     config: VerticalConfig,
     manifest: dict,
     backend_base_url: str,
+    manifest_path: Path | None = None,
 ) -> dict:
     tool_ids: dict[str, str] = dict(manifest.get("tools", {}))
+    agent_ids: dict[str, str] = dict(manifest.get("agents", {}))
+
+    def _save() -> None:
+        if manifest_path is not None:
+            manifest_path.write_text(json.dumps({"tools": tool_ids, "agents": agent_ids}, indent=2))
+
     for tool in build_tool_schemas(config):
         request = _tool_schema_to_request(tool, backend_base_url)
-        existing_id = tool_ids.get(tool["name"])
+        # manifest may be lost/missing (fresh checkout) -- check ElevenLabs by name before creating a duplicate
+        existing_id = tool_ids.get(tool["name"]) or _find_existing_tool_id(client, tool["name"])
         if existing_id:
             client.conversational_ai.tools.update(existing_id, request=request)
             tool_ids[tool["name"]] = existing_id
         else:
             resp = client.conversational_ai.tools.create(request=request)
             tool_ids[tool["name"]] = resp.tool_id if hasattr(resp, "tool_id") else resp.id
+        _save()
 
-    agent_ids: dict[str, str] = dict(manifest.get("agents", {}))
     for agent_def in build_agents(config):
         conversation_config = _agent_def_to_conversation_config(agent_def, tool_ids)
-        existing_id = agent_ids.get(agent_def.name)
+        existing_id = agent_ids.get(agent_def.name) or _find_existing_agent_id(client, agent_def.name)
         if existing_id:
             client.conversational_ai.agents.update(existing_id, conversation_config=conversation_config, name=agent_def.name)
             agent_ids[agent_def.name] = existing_id
         else:
             resp = client.conversational_ai.agents.create(conversation_config=conversation_config, name=agent_def.name)
             agent_ids[agent_def.name] = resp.agent_id
+        _save()
 
     return {"tools": tool_ids, "agents": agent_ids}
 
@@ -102,9 +125,8 @@ def main() -> None:
     manifest = json.loads(args.manifest.read_text()) if args.manifest.exists() else {}
     client = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
 
-    result = upsert_all(client, config, manifest, args.backend_base_url)
+    result = upsert_all(client, config, manifest, args.backend_base_url, manifest_path=args.manifest)
 
-    args.manifest.write_text(json.dumps(result, indent=2))
     for kind in ("tools", "agents"):
         for name, id_ in result[kind].items():
             print(f"{kind[:-1]}: {name} -> {id_}")

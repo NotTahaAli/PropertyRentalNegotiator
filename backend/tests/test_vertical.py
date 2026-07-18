@@ -3,7 +3,7 @@ import datetime
 import pytest
 from pydantic import ValidationError
 
-from app.vertical import build_spec_model, load_vertical
+from app.vertical import SpecField, build_spec_model, load_vertical
 
 
 def test_config_loads_and_validates():
@@ -85,6 +85,36 @@ def test_spec_model_rejects_bad_enum_value():
             move_in="2026-09-01",
             budget_monthly_rent=250000,
         )
+
+
+def test_red_flag_thresholds_match_locked_decision():
+    config = load_vertical()
+    by_rule = {flag.rule: flag for flag in config.red_flags}
+    assert by_rule["below_market_pct"].threshold == 30
+    assert by_rule["below_market_pct"].action == "confirm_then_flag"
+    assert by_rule["no_written_quote"].action == "flag"
+    assert by_rule["advance_months_gt"].threshold == 6
+    assert by_rule["advance_months_gt"].action == "flag"
+
+
+def test_benchmark_fallback_values():
+    config = load_vertical()
+    assert config.benchmark_fallback.per_sqft_low == 180
+    assert config.benchmark_fallback.per_sqft_high == 450
+
+
+def test_build_spec_model_rejects_enum_field_missing_values():
+    config = load_vertical()
+    broken = config.model_copy(
+        update={
+            "spec_schema": {
+                **config.spec_schema,
+                "floor": SpecField(type="enum", required=True, values=None),
+            }
+        }
+    )
+    with pytest.raises(ValueError, match="floor"):
+        build_spec_model(broken)
 
 
 def test_spec_model_allows_omitting_optional_field():

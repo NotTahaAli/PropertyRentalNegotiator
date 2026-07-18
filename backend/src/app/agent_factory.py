@@ -9,23 +9,6 @@ PERSONA_NAMES = ["stonewaller", "lowballer", "upseller", "firm"]
 
 NEGOTIATOR_TOOL_NAMES = ["log_quote", "get_leverage", "check_redflag", "get_benchmark"]
 
-FEE_HINTS = {
-    "monthly_rent": "Monthly rent in the client's currency, as quoted by the dealer.",
-    "advance_months": "Number of months' rent required as an upfront advance.",
-    "commission": "One-time dealer commission fee.",
-    "maintenance": "Monthly maintenance/society charges.",
-    "annual_increment_pct": "Annual rent increment, as a percentage.",
-}
-
-FIRST_MESSAGES = {
-    "estimator": "Hi! I'll help you describe the shop you're looking to rent. Ready to get started?",
-    "negotiator": "Assalam-o-Alaikum, I'm calling on behalf of a client who is looking to rent a commercial shop.",
-    "stonewaller": "Yes hello, dealer speaking.",
-    "lowballer": "Hello ji, how can I help you?",
-    "upseller": "Good day, I have some excellent properties available.",
-    "firm": "Hello, thank you for calling. How may I assist you?",
-}
-
 
 @dataclass
 class AgentDef:
@@ -49,10 +32,10 @@ def build_negotiator_prompt(config: VerticalConfig) -> str:
     return config.negotiator_prompt + "\n\n" + "\n".join(lines)
 
 
-def _fee_property(fee_name: str) -> dict:
+def _fee_property(fee_name: str, fee_hints: dict[str, str]) -> dict:
     return {
         "type": "number",
-        "description": FEE_HINTS.get(fee_name, fee_name.replace("_", " ")),
+        "description": fee_hints.get(fee_name, fee_name.replace("_", " ")),
     }
 
 
@@ -74,7 +57,7 @@ def _webhook_tool(name: str, description: str, properties: dict, required: list[
 
 
 def build_tool_schemas(config: VerticalConfig) -> list[dict]:
-    fee_properties = {fee: _fee_property(fee) for fee in config.fee_taxonomy}
+    fee_properties = {fee: _fee_property(fee, config.fee_hints) for fee in config.fee_taxonomy}
 
     log_quote = _webhook_tool(
         "log_quote",
@@ -123,13 +106,13 @@ def build_agents(config: VerticalConfig) -> list[AgentDef]:
         AgentDef(
             name="estimator",
             prompt=config.estimator_prompt,
-            first_message=FIRST_MESSAGES["estimator"],
+            first_message=config.first_messages["estimator"],
             llm=EXTRACTION_LLM,
         ),
         AgentDef(
             name="negotiator",
             prompt=build_negotiator_prompt(config),
-            first_message=FIRST_MESSAGES["negotiator"],
+            first_message=config.first_messages["negotiator"],
             llm=EXTRACTION_LLM,
             tool_names=list(NEGOTIATOR_TOOL_NAMES),
         ),
@@ -139,7 +122,7 @@ def build_agents(config: VerticalConfig) -> list[AgentDef]:
             AgentDef(
                 name=persona,
                 prompt=config.persona_prompts[persona],
-                first_message=FIRST_MESSAGES[persona],
+                first_message=config.first_messages[persona],
                 llm=PERSONA_LLM,
             )
         )

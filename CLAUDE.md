@@ -23,7 +23,7 @@ Keep this table and `docs/negotiator-implementation-plan.html`'s status fact til
 | # | Component | Status |
 | --- | --- | --- |
 | K1 | vertical.json schema + shop_rental config | **Done** — `backend/config/vertical.json`, `backend/src/app/vertical.py` |
-| K2 | Supabase schema + FastAPI data layer | **Done** — `backend/supabase/migrations/`, `backend/src/app/{db,crud,seed,api,main}.py`. 4 tables live, seeded (1 spec + 4 dealers), FastAPI app with `/health` + CRUD routes for specs/dealers/calls/quotes verified live. `crud.py`/`api.py` are create/get/list only; K4/K11 add update/delete for `quotes`/`calls` |
+| K2 | Supabase schema + FastAPI data layer | **Done** — `backend/supabase/migrations/`, `backend/src/app/{db,crud,seed,api,main}.py`. 4 tables live, seeded (1 spec + 4 dealers), FastAPI app with `/health` + CRUD routes for specs/dealers/calls/quotes verified live. `crud.py`/`api.py` are create/get/list only; K4/K11 add update/delete for `quotes`/`calls`. No `update_spec`/PATCH route yet either — K6 (doc parser) and K8 (Intake UI) will need one to persist an edited/confirmed spec; known gap, deliberately not built until a caller needs it |
 | K3 | Agent factory script | **Done** — `backend/src/app/agent_factory.py`, `backend/src/app/make_agents.py`. 4 webhook tools + 6 agents created live in ElevenLabs, idempotent via `backend/config/agents.generated.json` |
 | K4 | Tool webhooks ×4 | Not started |
 | K5 | Agent-to-agent audio bridge | Not started |
