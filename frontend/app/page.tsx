@@ -1,4 +1,5 @@
 import Link from "next/link";
+import NavAuth from "@/components/auth/NavAuth";
 
 const FEATURES = [
   {
@@ -29,9 +30,12 @@ export default function Home() {
         <span className="font-display text-sm font-semibold tracking-tight text-text">
           PropertyRentalNegotiator
         </span>
-        <span className="font-mono text-xs text-text-dim">
-          Hack-Nation · 01
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="font-mono text-xs text-text-dim">
+            Hack-Nation · 01
+          </span>
+          <NavAuth />
+        </div>
       </nav>
 
       {/* ── main hero ── */}
