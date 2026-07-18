@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# K3 agent factory output (workspace-specific IDs)
+config/agents.generated.json

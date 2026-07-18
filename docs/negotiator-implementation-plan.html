@@ -154,7 +154,7 @@
     <div class="fact"><b>Cost budget</b><span>PKR 0 — free tiers only</span></div>
     <div class="fact"><b>Keys in hand</b><span>ElevenLabs · OpenAI · Tavily</span></div>
     <div class="fact"><b>Buffer</b><span>7–10 AM dead zone + 30 min pre-submit</span></div>
-    <div class="fact"><b>Status</b><span id="status-tile" class="stat-wip">K1 done · 11 pending</span></div>
+    <div class="fact"><b>Status</b><span id="status-tile" class="stat-wip">K1, K3 done · 10 pending</span></div>
   </div>
 </header>
 
@@ -299,7 +299,7 @@
     <tr><th>#</th><th>Component</th><th>Owner</th><th>Est</th><th>Needs</th><th>Status</th><th>Interface / Definition of done</th></tr>
     <tr><td>K1</td><td><b>vertical.json schema + shop_rental config</b></td><td><span class="owner oc">C</span></td><td>1.5h</td><td>—</td><td class="stat-done">Done</td><td>File in repo, validated by a 20-line pydantic model. Everything downstream imports this. <b>Do first.</b></td></tr>
     <tr><td>K2</td><td><b>Supabase schema + FastAPI data layer</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>—</td><td class="stat-todo">Not started</td><td>4 tables live; CRUD helpers; seed script inserts 4 dealers + 1 sample spec.</td></tr>
-    <tr><td>K3</td><td><b>Agent factory script</b></td><td><span class="owner ob">B</span></td><td>2h</td><td>K1</td><td class="stat-todo">Not started</td><td><code>python make_agents.py vertical.json</code> creates/updates all 6 ElevenLabs agents (prompts, voices, tools). Idempotent.</td></tr>
+    <tr><td>K3</td><td><b>Agent factory script</b></td><td><span class="owner ob">B</span></td><td>2h</td><td>K1</td><td class="stat-done">Done</td><td><code>python -m app.make_agents</code> creates/updates all 6 ElevenLabs agents (prompts, tools) from <code>vertical.json</code>. Idempotent via <code>agents.generated.json</code> manifest. Pure builders unit-tested; live create deferred to integration.</td></tr>
     <tr><td>K4</td><td><b>Tool webhooks ×4</b></td><td><span class="owner ob">B</span></td><td>2h</td><td>K2</td><td class="stat-todo">Not started</td><td>Endpoints live on Render; test with curl before wiring agents. <code>log_quote</code> row visible in Supabase dashboard.</td></tr>
     <tr><td>K5</td><td><b>Agent-to-agent audio bridge</b></td><td><span class="owner ob">B</span></td><td>3h <span class="risk-hi">⚠ timebox</span></td><td>K3</td><td class="stat-todo">Not started</td><td><code>POST /calls/start</code> {spec_id, dealer_id} → bridged call, recording saved, transcript stored, live audio relayed to browser. <b>If not working by hour 3 → role-play fallback, move on.</b></td></tr>
     <tr><td>K6</td><td><b>Doc parser</b></td><td><span class="owner oc">C</span></td><td>1.5h</td><td>K1</td><td class="stat-todo">Not started</td><td><code>POST /parse</code> (PDF/image of rent agreement or requirements doc) → partial spec JSON via OpenAI. Unknown fields null, never guessed.</td></tr>

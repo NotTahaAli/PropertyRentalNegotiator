@@ -24,7 +24,7 @@ Keep this table and `docs/negotiator-implementation-plan.html`'s status fact til
 | --- | --- | --- |
 | K1 | vertical.json schema + shop_rental config | **Done** — `backend/config/vertical.json`, `backend/src/app/vertical.py` |
 | K2 | Supabase schema + FastAPI data layer | Not started |
-| K3 | Agent factory script | Not started |
+| K3 | Agent factory script | **Done** — `backend/src/app/agent_factory.py`, `backend/src/app/make_agents.py` |
 | K4 | Tool webhooks ×4 | Not started |
 | K5 | Agent-to-agent audio bridge | Not started |
 | K6 | Doc parser | Not started |
