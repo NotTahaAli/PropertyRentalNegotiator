@@ -1,0 +1,24 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "NotTahaAli", email = "tahaali.6074+github@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.13.4",
+]
+
+[project.scripts]
+app = "app:main"
+
+[build-system]
+requires = ["uv_build>=0.11.29,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

@@ -14,7 +14,7 @@ Always work with these active — not optional:
 
 "The Negotiator" — hackathon project (Hack-Nation Challenge 01, ElevenLabs). Voice agents call Pakistani property dealers about commercial shop rentals, extract itemised rent quotes, leverage bids against each other, and produce a ranked report with transcript citations. Full plan: `docs/negotiator-implementation-plan.html` — read it before making architectural decisions; it is the source of truth.
 
-The repo is greenfield: `backend/` and `frontend/` are empty scaffolds. No build/test commands exist yet — add them here as they are created.
+The repo is greenfield: `frontend/` is a scaffold. `backend/` is a uv-managed Python package (`src/app/`) — run tests with `cd backend && uv run pytest`.
 
 ## Locked decisions — do not re-litigate
 
