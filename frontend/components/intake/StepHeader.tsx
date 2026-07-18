@@ -1,6 +1,6 @@
 const STEPS = [
   { label: "Voice interview", short: "Voice" },
-  { label: "Attach documents", short: "Docs" },
+  { label: "Attach documents (optional)", short: "Docs" },
   { label: "Confirm & submit", short: "Confirm" },
 ] as const;
 

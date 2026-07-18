@@ -105,8 +105,6 @@ export default function IntakePage() {
   const [invalidFields, setInvalidFields] = useState<Set<keyof JobSpec>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [docsComplete, setDocsComplete] = useState(false);
-  const [parseFailed, setParseFailed] = useState(false);
 
   async function handleConfirm() {
     const missing = REQUIRED_SPEC_FIELDS.filter((f) => isFieldMissing(spec, f));
@@ -137,38 +135,24 @@ export default function IntakePage() {
       {step === 1 && (
         <VoiceIntake
           onField={(key, value) => dispatch({ type: "VOICE_FIELD", key, value })}
-          onSkip={() => dispatch({ type: "GOTO", step: 2 })}
+          onCallEnded={() => dispatch({ type: "GOTO", step: 2 })}
+          onAddDocs={() => dispatch({ type: "GOTO", step: 2 })}
         />
       )}
 
       {step === 2 && (
         <div className="step-enter flex flex-col gap-6">
-          <DocUpload
-            onParsed={(parsed) => dispatch({ type: "DOC_PARSED", parsed })}
-            onCompletionChange={setDocsComplete}
-            onParseFailed={() => setParseFailed(true)}
-          />
+          <DocUpload onParsed={(parsed) => dispatch({ type: "DOC_PARSED", parsed })} />
           <div className="flex items-center justify-between">
             <Button variant="ghost" onClick={() => dispatch({ type: "GOTO", step: 1 })}>
               ← Back to voice
             </Button>
-            <div className="flex items-center gap-3">
-              {parseFailed && !docsComplete && (
-                <Button
-                  variant="ghost"
-                  onClick={() => dispatch({ type: "GOTO", step: 3 })}
-                >
-                  Parser not ready — continue without docs →
-                </Button>
-              )}
-              <Button
-                variant="secondary"
-                onClick={() => dispatch({ type: "GOTO", step: 3 })}
-                disabled={!docsComplete}
-              >
-                Continue to confirm →
-              </Button>
-            </div>
+            <Button
+              variant="secondary"
+              onClick={() => dispatch({ type: "GOTO", step: 3 })}
+            >
+              Continue to confirm →
+            </Button>
           </div>
         </div>
       )}
