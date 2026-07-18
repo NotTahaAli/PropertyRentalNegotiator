@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from . import crud
-from .api import _get_or_404
+from .api import QuoteCreate, _get_or_404, _total_first_year
 from .vertical import load_vertical
 
 
@@ -95,8 +95,30 @@ def evaluate_red_flags(
 
 
 @tools_router.post("/log_quote")
-def log_quote():
-    raise HTTPException(status_code=501)
+def log_quote(body: QuoteCreate) -> dict[str, Any]:
+    call = _get_or_404(crud.get_call(body.call_id))
+    spec = _get_or_404(crud.get_spec(call["spec_id"]))
+    verdict = evaluate_red_flags(
+        spec,
+        monthly_rent=body.monthly_rent,
+        advance_months=body.advance_months,
+        binding=body.binding,
+    )
+    total = _total_first_year(body)
+    quote = crud.create_quote(
+        {
+            **body.model_dump(),
+            "total_first_year": total,
+            "flagged": verdict["action"] != "clear",
+            "flag_reason": "; ".join(verdict["reasons"]) or None,
+        }
+    )
+    return {
+        "quote_id": quote["id"],
+        "total_first_year": total,
+        "flagged": quote["flagged"],
+        "flag_reason": quote["flag_reason"],
+    }
 
 
 @tools_router.post("/get_leverage")

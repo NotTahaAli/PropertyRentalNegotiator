@@ -184,3 +184,72 @@ def test_check_redflag_unknown_spec_404(monkeypatch):
     monkeypatch.setattr(crud, "get_spec", lambda id: None)
     response = client.post("/tools/check_redflag", json={"spec_id": "nope"}, headers=_headers())
     assert response.status_code == 404
+
+
+# --- POST /tools/log_quote -----------------------------------------------
+
+def _wire_call(monkeypatch, captured):
+    monkeypatch.setattr(crud, "get_call", lambda id: {"id": id, "spec_id": "s1"} if id == "c1" else None)
+    monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
+
+    def fake_create_quote(row):
+        captured.update(row)
+        return {"id": "q1", **row}
+
+    monkeypatch.setattr(crud, "create_quote", fake_create_quote)
+
+
+def test_log_quote_clean(monkeypatch):
+    captured = {}
+    _wire_call(monkeypatch, captured)
+    response = client.post(
+        "/tools/log_quote",
+        json={
+            "call_id": "c1",
+            "dealer_id": "d1",
+            "monthly_rent": 200000,
+            "advance_months": 2,
+            "commission": 100000,
+            "maintenance": 5000,
+            "annual_increment_pct": 10,
+            "binding": True,
+        },
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert captured["total_first_year"] == 2960000  # 12*200k + 2*200k + 100k + 12*5k
+    assert captured["flagged"] is False
+    assert captured["flag_reason"] is None
+    assert response.json() == {
+        "quote_id": "q1",
+        "total_first_year": 2960000,
+        "flagged": False,
+        "flag_reason": None,
+    }
+
+
+def test_log_quote_lowball_unbinding_flagged(monkeypatch):
+    captured = {}
+    _wire_call(monkeypatch, captured)
+    response = client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 90000},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert captured["flagged"] is True
+    assert "below" in captured["flag_reason"]
+    assert "written" in captured["flag_reason"]
+
+
+def test_log_quote_unknown_call_404(monkeypatch):
+    called = []
+    monkeypatch.setattr(crud, "get_call", lambda id: None)
+    monkeypatch.setattr(crud, "create_quote", lambda row: called.append(row))
+    response = client.post(
+        "/tools/log_quote",
+        json={"call_id": "nope", "dealer_id": "d1", "monthly_rent": 100},
+        headers=_headers(),
+    )
+    assert response.status_code == 404
+    assert called == []
