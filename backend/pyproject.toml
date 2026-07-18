@@ -8,9 +8,11 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.139.2",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
     "supabase>=2.31.0",
+    "uvicorn[standard]>=0.51.0",
 ]
 
 [project.scripts]
