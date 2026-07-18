@@ -143,3 +143,44 @@ def test_get_benchmark_unknown_spec_404(monkeypatch):
     monkeypatch.setattr(crud, "get_spec", lambda id: None)
     response = client.post("/tools/get_benchmark", json={"spec_id": "nope"}, headers=_headers())
     assert response.status_code == 404
+
+
+# --- POST /tools/check_redflag -------------------------------------------
+
+def test_check_redflag_clear(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
+    response = client.post(
+        "/tools/check_redflag",
+        json={"spec_id": "s1", "monthly_rent": 200000, "advance_months": 2, "binding": True},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["action"] == "clear"
+
+
+def test_check_redflag_lowball(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
+    response = client.post(
+        "/tools/check_redflag",
+        json={"spec_id": "s1", "monthly_rent": 90000, "binding": True},
+        headers=_headers(),
+    )
+    body = response.json()
+    assert body["action"] == "confirm_then_flag"
+    assert body["confirm_question"]
+    assert body["benchmark"]["monthly_low"] == 162000
+
+
+def test_check_redflag_spec_id_only_fires_no_written_quote(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
+    response = client.post("/tools/check_redflag", json={"spec_id": "s1"}, headers=_headers())
+    body = response.json()
+    assert response.status_code == 200
+    assert body["action"] == "flag"
+    assert any("written" in r for r in body["reasons"])
+
+
+def test_check_redflag_unknown_spec_404(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: None)
+    response = client.post("/tools/check_redflag", json={"spec_id": "nope"}, headers=_headers())
+    assert response.status_code == 404

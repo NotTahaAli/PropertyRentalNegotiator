@@ -104,9 +104,22 @@ def get_leverage():
     raise HTTPException(status_code=501)
 
 
+class RedflagCheck(BaseModel):
+    spec_id: str
+    monthly_rent: float | None = None
+    advance_months: float | None = None
+    binding: bool | None = None
+
+
 @tools_router.post("/check_redflag")
-def check_redflag():
-    raise HTTPException(status_code=501)
+def check_redflag(body: RedflagCheck) -> dict[str, Any]:
+    spec = _get_or_404(crud.get_spec(body.spec_id))
+    return evaluate_red_flags(
+        spec,
+        monthly_rent=body.monthly_rent,
+        advance_months=body.advance_months,
+        binding=body.binding,
+    )
 
 
 class SpecIdBody(BaseModel):
