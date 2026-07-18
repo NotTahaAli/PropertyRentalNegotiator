@@ -22,14 +22,6 @@ an item; delete resolved items instead of checking them off.
   backend, or a separate frontend call after `/specs` succeeds. K9 needs
   dealers to exist to show anything.
 
-- **Real ElevenLabs Estimator agent id** — `frontend/.env.local`'s
-  `NEXT_PUBLIC_ELEVENLABS_ESTIMATOR_AGENT_ID` is a placeholder. Getting a
-  real one means running `cd backend && uv run python -m app.make_agents`
-  against a real `ELEVENLABS_API_KEY` — a live write against the ElevenLabs
-  account, using a key that lives in `backend/.env`. Not run automatically;
-  run it yourself and paste the `estimator` id from the printed manifest
-  into `frontend/.env.local`. Ask if you'd like it run for you instead.
-
 - **Real `set_spec_field` tool-call event shape** —
   `frontend/components/intake/VoiceIntake.tsx` guesses the Convai widget
   event shape and falls back to a manual "Simulate voice completion"
@@ -44,3 +36,7 @@ an item; delete resolved items instead of checking them off.
 
 - Merge priority for `location` in the K8 intake merge logic: confirmed
   voice-wins (matches the existing code and mock data, no change needed).
+- Real Estimator agent id: obtained from the live make_agents run, now in
+  `frontend/.env.local` (public id, not a secret). Backend deployed to
+  https://negotiator-backend.onrender.com (`/health` 200, `/specs` 401
+  without token — auth gate live).
