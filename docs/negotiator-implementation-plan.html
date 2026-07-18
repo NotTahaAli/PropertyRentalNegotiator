@@ -154,7 +154,7 @@
     <div class="fact"><b>Cost budget</b><span>PKR 0 — free tiers only</span></div>
     <div class="fact"><b>Keys in hand</b><span>ElevenLabs · OpenAI · Tavily</span></div>
     <div class="fact"><b>Buffer</b><span>7–10 AM dead zone + 30 min pre-submit</span></div>
-    <div class="fact"><b>Status</b><span id="status-tile" class="stat-wip">K1 · K2 done · 10 pending</span></div>
+    <div class="fact"><b>Status</b><span id="status-tile" class="stat-wip">K1 · K2 · K13 (backend) done · 9 pending</span></div>
   </div>
 </header>
 
@@ -168,7 +168,8 @@
   <h2>Locked. Do not re-litigate at 3 AM.</h2>
   <div class="locks">
     <div class="lock">Vertical: <b>commercial shop rental</b>, Pakistan property dealers</div>
-    <div class="lock">Counterparties: <b>counter-agents</b> (4 personas) + optional human role-play</div>
+    <div class="lock">Counterparties: <b>counter-agents</b> (4 personas) + optional human role-play — a testing stand-in for real dealer phone calls (Twilio/PSTN is the stretch item for that)</div>
+    <div class="lock">Multi-tenant: <b>Supabase Auth</b> (email+password); every spec has an owner; FastAPI enforces it via JWT</div>
     <div class="lock">Transport: <b>web audio only</b> — ElevenLabs WebSocket/WebRTC. No Twilio, no PSTN</div>
     <div class="lock">Language: <b>English only</b>. Urdu = super-optional stretch</div>
     <div class="lock">Stack: <b>FastAPI (Render free)</b> + <b>Next.js (Vercel free)</b></div>
@@ -221,7 +222,7 @@
   <div class="eyebrow">02 · Data model</div>
   <h2>Supabase schema</h2>
   <pre><code><span class="c">-- keep it this small; resist adding tables at 4 AM</span>
-<span class="k">specs</span>      (id, created_at, vertical, status, spec_json <span class="n">jsonb</span>, benchmark_json <span class="n">jsonb</span>, confirmed <span class="n">bool</span>)
+<span class="k">specs</span>      (id, created_at, vertical, status, spec_json <span class="n">jsonb</span>, benchmark_json <span class="n">jsonb</span>, confirmed <span class="n">bool</span>, user_id <span class="n">uuid</span>)
 <span class="k">dealers</span>    (id, spec_id, name, persona, phone_label, source)          <span class="c">-- persona: stonewaller|lowballer|upseller|firm|human</span>
 <span class="k">calls</span>      (id, spec_id, dealer_id, round <span class="n">int</span>, status, started_at, ended_at,
             recording_url, transcript_json <span class="n">jsonb</span>, outcome)             <span class="c">-- outcome: quote|callback|declined</span>
@@ -234,6 +235,7 @@
     <li><code>total_first_year</code> = 12×rent + advance + commission + 12×maintenance + other fees. Single number makes deliberately-incomparable fee structures comparable — that is the product thesis in one column.</li>
     <li><code>transcript_json</code> stores numbered utterances → report cites <code>[call 3, line 41]</code>.</li>
     <li>Frontend reads via FastAPI, not Supabase directly — keeps keys server-side, one auth story.</li>
+    <li><code>specs.user_id</code> ties every spec to a Supabase Auth user — FastAPI enforces ownership on every read/write, closing the pre-multi-tenant cross-tenant leak.</li>
   </ul>
 </section>
 
@@ -280,6 +282,7 @@
     <div class="agent"><span class="role">Dealer 3</span><b>The Upseller</b><p>Pushes the bigger corner shop, "another party is viewing tomorrow", pressure tactics. Tests spec discipline — Negotiator must decline the upsell and return to the confirmed spec.</p></div>
     <div class="agent"><span class="role">Dealer 4</span><b>Firm-but-Fair</b><p>Quotes a realistic price, holds it — until presented with a genuine logged competing bid, then matches or trims 5–8% and waives commission. <b>This call is the mandatory "price moves from leverage" success criterion.</b></p></div>
   </div>
+  <p class="muted">The four dealer personas above simulate real property dealers for testing/demo — the SaaS product's real end-state calls actual dealer phone numbers (Twilio, a listed stretch item).</p>
   <h3>Negotiator tool belt (webhooks → FastAPI)</h3>
   <table>
     <tr><th>Tool</th><th>Does</th></tr>
@@ -304,11 +307,12 @@
     <tr><td>K5</td><td><b>Agent-to-agent audio bridge</b></td><td><span class="owner ob">B</span></td><td>3h <span class="risk-hi">⚠ timebox</span></td><td>K3</td><td class="stat-todo">Not started</td><td><code>POST /calls/start</code> {spec_id, dealer_id} → bridged call, recording saved, transcript stored, live audio relayed to browser. <b>If not working by hour 3 → role-play fallback, move on.</b></td></tr>
     <tr><td>K6</td><td><b>Doc parser</b></td><td><span class="owner oc">C</span></td><td>1.5h</td><td>K1</td><td class="stat-todo">Not started</td><td><code>POST /parse</code> (PDF/image of rent agreement or requirements doc) → partial spec JSON via OpenAI. Unknown fields null, never guessed.</td></tr>
     <tr><td>K7</td><td><b>Benchmark service</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K1</td><td class="stat-todo">Not started</td><td>Tavily query → per-sqft range, cached per spec; falls back to config values on failure/timeout (3 s).</td></tr>
-    <tr><td>K8</td><td><b>Intake UI</b> (voice widget + upload + spec confirm)</td><td><span class="owner oa">A</span></td><td>3h</td><td>K1 shape only</td><td class="stat-todo">Not started</td><td>User talks to Estimator, uploads docs, reviews editable spec form, hits Confirm. Works against mock endpoints first.</td></tr>
-    <tr><td>K9</td><td><b>Call Center UI</b></td><td><span class="owner oa">A</span></td><td>2.5h</td><td>K5 shape only</td><td class="stat-todo">Not started</td><td>Dealer list, Call buttons, live status, audio player, transcript stream. Also hosts role-play "Answer as dealer" mode (same widget, dealer persona).</td></tr>
+    <tr><td>K8</td><td><b>Intake UI</b> (voice widget + upload + spec confirm)</td><td><span class="owner oa">A</span></td><td>3h</td><td>K1 shape only, K13</td><td class="stat-todo">Not started</td><td>User talks to Estimator, uploads docs, reviews editable spec form, hits Confirm. Works against mock endpoints first.</td></tr>
+    <tr><td>K9</td><td><b>Call Center UI</b></td><td><span class="owner oa">A</span></td><td>2.5h</td><td>K5 shape only, K13</td><td class="stat-todo">Not started</td><td>Dealer list, Call buttons, live status, audio player, transcript stream. Also hosts role-play "Answer as dealer" mode (same widget, dealer persona).</td></tr>
     <tr><td>K10</td><td><b>Report generator + UI</b></td><td><span class="owner oc">C</span> gen · <span class="owner oa">A</span> UI</td><td>2h + 2h</td><td>K2, K4</td><td class="stat-todo">Not started</td><td>Ranked table by <code>total_first_year</code>, flags with reasons, recommended deal, plain-language why, transcript citations, recording links.</td></tr>
     <tr><td>K11</td><td><b>Red-flag engine</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K1, K7</td><td class="stat-todo">Not started</td><td>Config-driven rules inside K4/K10. Unit-tested against the Lowballer's numbers: catches, confirms, flags, never ranks #1 silently. Also adds <code>update_quote</code> for writing <code>flagged</code>/<code>flag_reason</code> (K2's CRUD layer is create/get/list only).</td></tr>
     <tr><td>K12</td><td><b>Demo assets</b></td><td><span class="owner oall">ALL</span></td><td>rolling</td><td>everything</td><td class="stat-todo">Not started</td><td>Golden call recordings, demo video, tech pitch video, 2nd vertical config, submission answers, repo zip.</td></tr>
+    <tr><td>K13</td><td><b>Auth & multi-tenancy</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K2</td><td class="stat-done">Done (backend)</td><td>Supabase Auth (email+password); specs.user_id; FastAPI verifies JWT via JWKS and enforces ownership on every endpoint. Frontend signup/login pages not started.</td></tr>
   </table>
   <div class="call">
     <b>Anti-block rule</b>
