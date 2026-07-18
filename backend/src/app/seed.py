@@ -1,3 +1,5 @@
+import sys
+
 from . import crud
 from .vertical import load_vertical
 
@@ -15,7 +17,7 @@ SAMPLE_SPEC_JSON = {
 }
 
 
-def seed() -> None:
+def seed(user_id: str) -> None:
     config = load_vertical()
 
     spec = crud.create_spec(
@@ -24,6 +26,7 @@ def seed() -> None:
             "status": "confirmed",
             "spec_json": SAMPLE_SPEC_JSON,
             "confirmed": True,
+            "user_id": user_id,
         }
     )
     print(f"seeded spec {spec['id']}")
@@ -42,4 +45,4 @@ def seed() -> None:
 
 
 if __name__ == "__main__":
-    seed()
+    seed(sys.argv[1])

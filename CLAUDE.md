@@ -16,7 +16,7 @@ Always work with these active — not optional:
 
 The repo is greenfield: `frontend/` is a scaffold. `backend/` is a uv-managed Python package (`src/app/`) — run tests with `cd backend && uv run pytest`.
 
-## Status — work breakdown (K1–K12)
+## Status — work breakdown (K1–K13)
 
 Keep this table and `docs/negotiator-implementation-plan.html`'s status fact tile + §05 Work Breakdown Status column in sync, always. The instant a K-component is finished (tests pass, committed), update its row here, update its row in the HTML table, and update the HTML status fact tile — same commit as the work. Never let this go stale.
 
@@ -29,18 +29,21 @@ Keep this table and `docs/negotiator-implementation-plan.html`'s status fact til
 | K5 | Agent-to-agent audio bridge | Not started |
 | K6 | Doc parser | Not started |
 | K7 | Benchmark service | Not started |
-| K8 | Intake UI | Not started |
-| K9 | Call Center UI | Not started |
+| K8 | Intake UI | Not started — needs K13 for a logged-in user |
+| K9 | Call Center UI | Not started — needs K13 for a logged-in user |
 | K10 | Report generator + UI | Not started |
 | K11 | Red-flag engine | Not started |
 | K12 | Demo assets | Not started |
+| K13 | Auth & multi-tenancy | **Done (backend)** — `backend/src/app/auth.py`, `api.py` ownership checks, `backend/supabase/migrations/20260718210604_specs_user_id.sql`. Frontend signup/login pages not started (frontend is still an empty scaffold) |
 
 ## Locked decisions — do not re-litigate
 
 - Vertical: commercial shop rental, Pakistan. Everything vertical-specific lives in `vertical.json` (config, not code); an agent factory script generates all ElevenLabs agent prompts from it.
 - Stack: FastAPI backend (Render free tier) + Next.js frontend (Vercel free tier) + Supabase Postgres. ElevenLabs Agents for all voice; web audio only (WebSocket/WebRTC) — no Twilio/PSTN.
 - English only. Free tiers only (keys: ElevenLabs, OpenAI, Tavily).
-- Frontend never talks to Supabase directly — all reads/writes go through FastAPI (keys stay server-side).
+- Frontend never talks to Supabase directly for data — all spec/dealer/call/quote reads/writes go through FastAPI (keys stay server-side). Auth (signup/login/session) is the one exception: frontend talks to Supabase Auth directly with the public anon key.
+- Multi-tenant: Supabase Auth (email+password). Every spec has an owner (`specs.user_id`); FastAPI verifies the caller's JWT via JWKS and enforces ownership on every data endpoint.
+- The 4 counter-agent personas (stonewaller, lowballer, upseller, firm) and the human-roleplay fallback are a testing/demo stand-in for calling real dealers by phone. Production vision is real outbound calls (Twilio/PSTN — already a listed stretch item, not built today); nothing about that changes today's implementation.
 - Benchmarks: Tavily live search at intake with a 3s timeout, falling back to hand-checked `benchmark_fallback` values in config. Never fetch benchmarks per-call.
 
 ## Architecture
@@ -54,7 +57,7 @@ Three-beat pipeline, one shared JSON spec:
 ### Supabase schema (keep it this small)
 
 ```
-specs   (id, created_at, vertical, status, spec_json jsonb, benchmark_json jsonb, confirmed bool)
+specs   (id, created_at, vertical, status, spec_json jsonb, benchmark_json jsonb, confirmed bool, user_id uuid)
 dealers (id, spec_id, name, persona, phone_label, source)
 calls   (id, spec_id, dealer_id, round int, status, started_at, ended_at,
          recording_url, transcript_json jsonb, outcome)
