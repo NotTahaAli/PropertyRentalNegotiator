@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(php -l *)"
+      "Bash(php -l *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 3 http://localhost:3000/)"
     ],
     "deny": [
       "Read(backend/.env)",
