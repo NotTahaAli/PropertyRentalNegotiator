@@ -12,12 +12,20 @@
       "Bash(tail backend/.env)",
       "Bash(less backend/.env)",
       "Bash(more backend/.env)",
-      "Bash(strings backend/.env)"
+      "Bash(strings backend/.env)",
+      "Read(frontend/.env)",
+      "Grep(frontend/.env)",
+      "Bash(cat frontend/.env)",
+      "Bash(head frontend/.env)",
+      "Bash(tail frontend/.env)",
+      "Bash(less frontend/.env)",
+      "Bash(more frontend/.env)",
+      "Bash(strings frontend/.env)"
     ]
   },
   "sandbox": {
     "filesystem": {
-      "denyRead": ["backend/.env"]
+      "denyRead": ["backend/.env", "frontend/.env"]
     }
   }
 }
