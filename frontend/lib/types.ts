@@ -84,3 +84,68 @@ export interface IntakeSubmitResponse {
   spec_id: string;
   dealers_seeded: number;
 }
+
+// ── K9 Call Center — mirrors backend calls/quotes/dealers shapes ──
+
+export type Persona = "stonewaller" | "lowballer" | "upseller" | "firm";
+
+export interface Dealer {
+  id: string;
+  spec_id: string;
+  name: string;
+  persona: Persona;
+  phone_label?: string | null;
+  source?: string | null;
+}
+
+export interface TranscriptLine {
+  line: number;
+  speaker: "negotiator" | "dealer";
+  text: string;
+}
+
+// Backend statuses; UI adds idle/calling/live on top (see UiCallState).
+export type CallStatus = "running" | "completed" | "failed";
+export type CallOutcome = "quote" | "declined" | "callback" | "failed";
+
+export interface CallRow {
+  id: string;
+  spec_id: string;
+  dealer_id: string;
+  round: number;
+  status: CallStatus;
+  started_at?: string | null;
+  ended_at?: string | null;
+  recording_url?: string | null;
+  transcript_json?: TranscriptLine[] | null;
+  outcome?: CallOutcome | null;
+}
+
+export interface Quote {
+  id?: string;
+  call_id: string;
+  dealer_id: string;
+  monthly_rent: number;
+  advance_months?: number | null;
+  commission?: number | null;
+  maintenance?: number | null;
+  annual_increment_pct?: number | null;
+  other_fees?: Record<string, number> | null;
+  total_first_year: number;
+  binding?: boolean;
+  notes?: string | null;
+  flagged?: boolean;
+  flag_reason?: string | null;
+}
+
+export interface CallStartResponse {
+  call_id: string;
+  status?: CallStatus;
+  // roleplay mode only:
+  negotiator_agent_id?: string;
+  dynamic_variables?: Record<string, unknown>;
+}
+
+// Client-side call lifecycle: idle → calling (POST in flight) → live
+// (backend "running") → done ("completed") | failed.
+export type UiCallState = "idle" | "calling" | "live" | "done" | "failed";

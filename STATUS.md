@@ -1,5 +1,38 @@
 # STATUS
 
+## K9 — Call Center UI (Owner A) — IN PROGRESS on `call-center-ui` branch
+
+Build order: ① types+mocks+api ✓ → ② useCallCenter hook ✓ → ③ components
+(DealerCard, CallStatusPanel, TranscriptStream, AudioPlayer, QuoteChip) →
+④ page `/calls/[spec_id]` + layout → ⑤ verify + docs. **Currently at: end of
+②, awaiting A's state-machine sanity check before ③.** If picking this up
+cold: read `frontend/lib/useCallCenter.ts` (the whole lifecycle lives there),
+then build ③ against `stateFor(dealerId)`.
+
+Assumptions made while B slept:
+1. No live transcript text exists backend-side — text lands complete in
+   `transcript_json` at call end; UI polls `GET /calls/{id}` every 2s. Mock
+   streams lines on a timer for the demo. Swap point if B adds a text WS:
+   `runRealCall` internals in `useCallCenter.ts` only.
+2. Live-audio WS (`/calls/{id}/stream`, base64 PCM-16k) exists but is NOT
+   wired into K9 v1 — needs an AudioWorklet PCM player, deferred.
+3. Roleplay = embed the negotiator agent (human answers as dealer) using
+   `/calls/start` mode=roleplay response; UI ships a placeholder panel until
+   the widget dynamic-variables attribute is verified.
+4. UI state "calling" is client-only (POST in flight); backend statuses are
+   only running/completed/failed.
+5. Real-mode dealer list renders empty until the dealer-seeding decision (C).
+6. Backend transcript line numbers are 1-based contiguous (verified in
+   `bridge.accumulate_transcript`) — mock matches; K10 citations safe.
+
+For the humans:
+- **B:** `POST /calls/{id}/transcript` (roleplay post-call webhook) is
+  unauthenticated — your flagged open security item; needs the shared
+  webhook secret once the real ElevenLabs payload is verified.
+- **C:** decision needed on dealer seeding per spec — until then, real-mode
+  `/calls/[spec_id]` shows an empty dealer list, blocking real-mode demo of
+  K9. (Mock demo unaffected.)
+
 ## K13 — Auth UI (Owner A) — done on `auth-ui` branch
 
 - Supabase Auth via supabase-js directly (per C's K13 design spec — anon key, no FastAPI auth routes). New dep: `@supabase/supabase-js`.
