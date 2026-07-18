@@ -122,6 +122,146 @@ def test_list_dealers_scoped_to_owned_spec(monkeypatch):
     assert response.json() == [{"id": "d1"}]
 
 
+def test_get_dealer_404s_for_non_owner(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1"}
+    )
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_B)
+
+    response = client.get("/dealers/d1")
+
+    assert response.status_code == 404
+
+
+def test_get_dealer_200s_for_owner(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1"}
+    )
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_A)
+
+    response = client.get("/dealers/d1")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "d1"
+
+
+def test_list_dealers_404s_for_non_owned_spec(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_B)
+
+    response = client.get("/dealers", params={"spec_id": "s1"})
+
+    assert response.status_code == 404
+
+
+def test_create_call_requires_spec_ownership(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_B)
+
+    response = client.post(
+        "/calls",
+        json={"spec_id": "s1", "dealer_id": "d1", "round": 1, "status": "pending"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_get_call_404s_for_non_owner(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1"}
+    )
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_B)
+
+    response = client.get("/calls/c1")
+
+    assert response.status_code == 404
+
+
+def test_get_call_200s_for_owner(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1"}
+    )
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_A)
+
+    response = client.get("/calls/c1")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "c1"
+
+
+def test_list_calls_requires_spec_id_query_param(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_A)
+
+    response = client.get("/calls")  # no spec_id
+
+    assert response.status_code == 422
+
+
+def test_list_calls_404s_for_non_owned_spec(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_B)
+
+    response = client.get("/calls", params={"spec_id": "s1"})
+
+    assert response.status_code == 404
+
+
+def test_list_calls_scoped_to_owned_spec(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    monkeypatch.setattr(crud, "list_calls", lambda **filters: [{"id": "c1"}])
+    _as(USER_A)
+
+    response = client.get("/calls", params={"spec_id": "s1"})
+
+    assert response.status_code == 200
+    assert response.json() == [{"id": "c1"}]
+
+
+def test_create_quote_requires_call_ownership(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1"}
+    )
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_B)
+
+    response = client.post(
+        "/quotes",
+        json={
+            "call_id": "c1",
+            "dealer_id": "d1",
+            "monthly_rent": 1000,
+            "total_first_year": 12000,
+        },
+    )
+
+    assert response.status_code == 404
+
+
 def test_get_quote_checks_ownership_through_call_and_spec(monkeypatch):
     monkeypatch.setattr(
         crud, "get_quote", lambda id: {"id": "q1", "call_id": "c1"}
@@ -137,3 +277,47 @@ def test_get_quote_checks_ownership_through_call_and_spec(monkeypatch):
     response = client.get("/quotes/q1")
 
     assert response.status_code == 404
+
+
+def test_list_quotes_requires_call_id_query_param(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1"}
+    )
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_A)
+
+    response = client.get("/quotes")  # no call_id
+
+    assert response.status_code == 422
+
+
+def test_list_quotes_404s_for_non_owned_call(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1"}
+    )
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    _as(USER_B)
+
+    response = client.get("/quotes", params={"call_id": "c1"})
+
+    assert response.status_code == 404
+
+
+def test_list_quotes_scoped_to_owned_call(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1"}
+    )
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A}
+    )
+    monkeypatch.setattr(crud, "list_quotes", lambda **filters: [{"id": "q1"}])
+    _as(USER_A)
+
+    response = client.get("/quotes", params={"call_id": "c1"})
+
+    assert response.status_code == 200
+    assert response.json() == [{"id": "q1"}]
