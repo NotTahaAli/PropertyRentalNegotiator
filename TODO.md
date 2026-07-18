@@ -26,6 +26,26 @@ an item; delete resolved items instead of checking them off.
 - **`/calls/[spec_id]` route** — doesn't exist yet; K9 Call Center UI not
   started.
 
+## Blocked: K4 live wiring (needs secrets + live ElevenLabs run)
+
+K4 endpoints are built and unit-tested (132/132 green); what's left needs the
+real secret and a live make_agents run:
+
+- Generate a secret (e.g. `openssl rand -hex 32`), set `TOOLS_WEBHOOK_SECRET`
+  in `backend/.env` AND in the Render dashboard (render.yaml already lists the
+  key, `sync: false`). Endpoints fail closed (401) until Render has it.
+- Re-run `cd backend && uv run python -m app.make_agents --backend-base-url
+  https://negotiator-backend.onrender.com` — idempotent update adds the
+  `X-Tools-Secret` header to all 4 ElevenLabs tools and the new required
+  `dealer_id` param to `get_leverage`. Aborts with KeyError if the secret env
+  var is missing (on purpose).
+- curl-verify on Render: no header → 401; with header → contract shapes;
+  a `log_quote` row visible in the Supabase dashboard (the plan doc's
+  acceptance criterion).
+- Transcript webhook (`api.py` `/calls/{id}/transcript`) still unauthenticated
+  — separate mechanism (ElevenLabs post-call HMAC webhook, dashboard-side),
+  unchanged by K4.
+
 ## Blocked: K5 dealer persona doesn't verbally reply to relayed audio
 
 Live-tested against real ElevenLabs agents. Connection-health bug is fixed;
