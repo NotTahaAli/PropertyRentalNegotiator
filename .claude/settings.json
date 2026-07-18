@@ -2,6 +2,21 @@
   "permissions": {
     "allow": [
       "Bash(php -l *)"
+    ],
+    "deny": [
+      "Read(backend/.env)",
+      "Grep(backend/.env)",
+      "Bash(cat backend/.env)",
+      "Bash(head backend/.env)",
+      "Bash(tail backend/.env)",
+      "Bash(less backend/.env)",
+      "Bash(more backend/.env)",
+      "Bash(strings backend/.env)"
     ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "denyRead": ["backend/.env"]
+    }
   }
 }

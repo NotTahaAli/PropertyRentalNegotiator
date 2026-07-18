@@ -23,8 +23,8 @@ Keep this table and `docs/negotiator-implementation-plan.html`'s status fact til
 | # | Component | Status |
 | --- | --- | --- |
 | K1 | vertical.json schema + shop_rental config | **Done** — `backend/config/vertical.json`, `backend/src/app/vertical.py` |
-| K2 | Supabase schema + FastAPI data layer | Not started |
-| K3 | Agent factory script | **Done** — `backend/src/app/agent_factory.py`, `backend/src/app/make_agents.py` |
+| K2 | Supabase schema + FastAPI data layer | **Done** — `backend/supabase/migrations/`, `backend/src/app/{db,crud,seed,api,main}.py`. 4 tables live, seeded (1 spec + 4 dealers), FastAPI app with `/health` + CRUD routes for specs/dealers/calls/quotes verified live. `crud.py`/`api.py` are create/get/list only; K4/K11 add update/delete for `quotes`/`calls` |
+| K3 | Agent factory script | **Done** — `backend/src/app/agent_factory.py`, `backend/src/app/make_agents.py`. 4 webhook tools + 6 agents created live in ElevenLabs, idempotent via `backend/config/agents.generated.json` |
 | K4 | Tool webhooks ×4 | Not started |
 | K5 | Agent-to-agent audio bridge | Not started |
 | K6 | Doc parser | Not started |
@@ -88,3 +88,4 @@ Highest-risk component: FastAPI asyncio task cross-pipes two ElevenLabs conversa
 - Render free tier sleeps after 15 min idle — backend health endpoint must be registered on cron-job.org pinger at deploy time.
 - ElevenLabs credits are finite: cap test conversations at 2–3 min, prefer text-mode agent testing for prompt iteration.
 - Scope discipline: nothing stretch (Urdu, Twilio, Zameen scraping) starts before a recorded end-to-end demo exists. "A connected loop beats a polished fragment."
+- `backend/.env` holds real secrets (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ELEVENLABS_API_KEY`). Never read, cat, print, log, or otherwise surface its contents in any response, tool call, or file. Use `backend/.env.example` (placeholders only) as the reference for what keys exist. If a task seems to need the actual values, ask the user to paste what's needed instead of opening the file.
