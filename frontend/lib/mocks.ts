@@ -1,5 +1,10 @@
 import type { JobSpec, ParsedDoc } from "./types";
 
+export const MOCK_SESSION = {
+  user: { id: "mock-user", email: "demo@negotiator.pk" },
+  access_token: "mock_token",
+} as const;
+
 export const MOCK_SPEC: JobSpec = {
   vertical: "commercial_shop_rental_pk",
   currency: "PKR",

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import AccountChip from "@/components/auth/AccountChip";
+import Protected from "@/components/auth/Protected";
 
 export default function IntakeLayout({
   children,
@@ -15,14 +17,15 @@ export default function IntakeLayout({
         >
           PropertyRentalNegotiator
         </Link>
-        <span className="font-mono text-xs text-text-dim">
-          Intake form
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="font-mono text-xs text-text-dim">Intake form</span>
+          <AccountChip />
+        </div>
       </nav>
 
       {/* ── content ── */}
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-6 py-8 sm:px-10 lg:py-12">
-        {children}
+        <Protected>{children}</Protected>
       </main>
     </div>
   );

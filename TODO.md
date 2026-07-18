@@ -7,36 +7,20 @@ an item; delete resolved items instead of checking them off.
 
 ## Blocked: frontend K8 → backend wiring
 
-- **`POST /parse`** — backend route now live (K6, `backend/src/app/parse.py`),
-  verified against real OpenAI. Remaining blocker: the endpoint requires a
-  Supabase JWT but `frontend/lib/api.ts:parseDoc()` sends no Authorization
-  header — there is no client-side session to read a token from until K13
-  frontend (login) exists. Unblocks with K13 frontend: add the bearer header
-  to `parseDoc`. Backend also needs `OPENAI_API_KEY` set on Render at deploy.
+- **`OPENAI_API_KEY` on Render** — K6 `/parse` is live-verified locally and
+  `parseDoc` already sends the bearer token (K13), but the deployed backend
+  at negotiator-backend.onrender.com has no `OPENAI_API_KEY` env var yet —
+  deployed `/parse` will 500/502 until it's set (secret, set by hand in the
+  Render dashboard or API).
 
-- **`POST /specs`** — the real endpoint exists but three things block wiring
-  it live, not one:
-  1. Auth: it requires a Supabase JWT (`Depends(get_current_user_id)`);
-     the frontend has no login/signup flow yet (K13 frontend not started),
-     so it has no token to send.
-  2. Request shape: frontend sends a flat `JobSpec`; backend's `SpecCreate`
-     expects `{vertical, status, spec_json, benchmark_json?, confirmed?}` —
-     the spec needs wrapping into `spec_json`.
-  3. Response shape: frontend expects `{spec_id, dealers_seeded}` back;
-     `create_spec` returns the full spec row and does not seed dealers —
-     dealer seeding today is a standalone script (`backend/src/app/seed.py`),
-     not tied to spec creation.
-  Unblocks when K13 frontend (login) exists, and someone decides whether
-  dealer-seeding-on-create becomes real backend behavior or stays a
-  separate frontend-side call after `/specs` succeeds.
-
-- **Real ElevenLabs Estimator agent id** — `frontend/.env.local`'s
-  `NEXT_PUBLIC_ELEVENLABS_ESTIMATOR_AGENT_ID` is a placeholder. Getting a
-  real one means running `cd backend && uv run python -m app.make_agents`
-  against a real `ELEVENLABS_API_KEY` — a live write against the ElevenLabs
-  account, using a key that lives in `backend/.env`. Not run automatically;
-  run it yourself and paste the `estimator` id from the printed manifest
-  into `frontend/.env.local`. Ask if you'd like it run for you instead.
+- **Dealer seeding on spec create** — `POST /specs` is now fully wired from
+  the frontend (auth token + shape adapter in `frontend/lib/api.ts`: wraps
+  the flat `JobSpec` into `spec_json`, unwraps the returned row into
+  `{spec_id, dealers_seeded}`). But `create_spec` does not seed dealers —
+  seeding is still the standalone `backend/src/app/seed.py` script, so the
+  adapter reports `dealers_seeded: 0`. Open decision: seed-on-create in the
+  backend, or a separate frontend call after `/specs` succeeds. K9 needs
+  dealers to exist to show anything.
 
 - **Real `set_spec_field` tool-call event shape** —
   `frontend/components/intake/VoiceIntake.tsx` guesses the Convai widget
@@ -52,3 +36,7 @@ an item; delete resolved items instead of checking them off.
 
 - Merge priority for `location` in the K8 intake merge logic: confirmed
   voice-wins (matches the existing code and mock data, no change needed).
+- Real Estimator agent id: obtained from the live make_agents run, now in
+  `frontend/.env.local` (public id, not a secret). Backend deployed to
+  https://negotiator-backend.onrender.com (`/health` 200, `/specs` 401
+  without token — auth gate live).

@@ -106,6 +106,7 @@ export default function IntakePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [docsComplete, setDocsComplete] = useState(false);
+  const [parseFailed, setParseFailed] = useState(false);
 
   async function handleConfirm() {
     const missing = REQUIRED_SPEC_FIELDS.filter((f) => isFieldMissing(spec, f));
@@ -142,21 +143,32 @@ export default function IntakePage() {
 
       {step === 2 && (
         <div className="step-enter flex flex-col gap-6">
-          <DocUpload 
-            onParsed={(parsed) => dispatch({ type: "DOC_PARSED", parsed })} 
+          <DocUpload
+            onParsed={(parsed) => dispatch({ type: "DOC_PARSED", parsed })}
             onCompletionChange={setDocsComplete}
+            onParseFailed={() => setParseFailed(true)}
           />
           <div className="flex items-center justify-between">
             <Button variant="ghost" onClick={() => dispatch({ type: "GOTO", step: 1 })}>
               ← Back to voice
             </Button>
-            <Button 
-              variant="secondary" 
-              onClick={() => dispatch({ type: "GOTO", step: 3 })}
-              disabled={!docsComplete}
-            >
-              Continue to confirm →
-            </Button>
+            <div className="flex items-center gap-3">
+              {parseFailed && !docsComplete && (
+                <Button
+                  variant="ghost"
+                  onClick={() => dispatch({ type: "GOTO", step: 3 })}
+                >
+                  Parser not ready — continue without docs →
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                onClick={() => dispatch({ type: "GOTO", step: 3 })}
+                disabled={!docsComplete}
+              >
+                Continue to confirm →
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -170,7 +182,9 @@ export default function IntakePage() {
             onFieldChange={(key, value) => dispatch({ type: "MANUAL_EDIT", key, value })}
           />
           {submitError && (
-            <p className="mt-3 text-sm text-error">{submitError}</p>
+            <p role="alert" className="mt-3 text-sm text-error">
+              {submitError}
+            </p>
           )}
           <ConfirmBar
             onBack={() => dispatch({ type: "GOTO", step: 2 })}

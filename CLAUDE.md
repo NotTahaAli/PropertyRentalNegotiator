@@ -27,14 +27,14 @@ Keep this table and `docs/negotiator-implementation-plan.html`'s status fact til
 | K3 | Agent factory script | **Done** — `backend/src/app/agent_factory.py`, `backend/src/app/make_agents.py`. 4 webhook tools + 6 agents created live in ElevenLabs, idempotent via `backend/config/agents.generated.json` |
 | K4 | Tool webhooks ×4 | Not started |
 | K5 | Agent-to-agent audio bridge | Not started |
-| K6 | Doc parser | **Done** — `backend/src/app/parse.py`, `backend/tests/test_parse.py`. `POST /parse` (JWT-gated, stateless): PDF/PNG/JPEG sent to OpenAI (`gpt-5.4-mini`, structured outputs), DOCX text pulled via stdlib. Unknown fields omitted, never guessed — live-verified (blank image yields empty spec). Frontend `parseDoc` auth-header wiring waits on K13 frontend (see TODO.md) |
+| K6 | Doc parser | **Done** — `backend/src/app/parse.py`, `backend/tests/test_parse.py`. `POST /parse` (JWT-gated, stateless): PDF/PNG/JPEG sent to OpenAI (`gpt-5.4-mini`, structured outputs), DOCX text pulled via stdlib. Unknown fields omitted, never guessed — live-verified (blank image yields empty spec). Frontend `parseDoc` sends the bearer token (K13); Render needs `OPENAI_API_KEY` set |
 | K7 | Benchmark service | Not started |
 | K8 | Intake UI | **Done (mock)** — `frontend/app/intake/`, `frontend/components/intake/`; real endpoint swap pending 12–2 PM window |
 | K9 | Call Center UI | Not started — needs K13 for a logged-in user |
 | K10 | Report generator + UI | Not started |
 | K11 | Red-flag engine | Not started |
 | K12 | Demo assets | Not started |
-| K13 | Auth & multi-tenancy | **Done (backend)** — `backend/src/app/auth.py`, `api.py` ownership checks, `backend/supabase/migrations/20260718210604_specs_user_id.sql`. Frontend signup/login pages not started |
+| K13 | Auth & multi-tenancy | **Done** — backend: `backend/src/app/auth.py`, `api.py` ownership checks, `backend/supabase/migrations/20260718210604_specs_user_id.sql`. Frontend: `frontend/app/(auth)/` login/signup, `frontend/components/auth/` (AuthProvider/Protected/AccountChip/NavAuth), supabase-js sessions, `/` + `/intake` route-guarded, API calls send Bearer token. Mock-mode verified + anon key probed live; full browser signup/login pass still to be clicked through |
 
 Cross-component integration gaps that are blocked on secrets, live external calls, or an unbuilt K-component (not on missing understanding) live in `TODO.md`. Update it in the same commit as whatever resolves or adds an item — same rule as the table above, never let it go stale.
 
