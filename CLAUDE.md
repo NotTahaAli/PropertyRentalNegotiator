@@ -14,7 +14,7 @@ Always work with these active — not optional:
 
 "The Negotiator" — hackathon project (Hack-Nation Challenge 01, ElevenLabs). Voice agents call Pakistani property dealers about commercial shop rentals, extract itemised rent quotes, leverage bids against each other, and produce a ranked report with transcript citations. Full plan: `docs/negotiator-implementation-plan.html` — read it before making architectural decisions; it is the source of truth.
 
-The repo is greenfield: `frontend/` is a scaffold. `backend/` is a uv-managed Python package (`src/app/`) — run tests with `cd backend && uv run pytest`.
+The repo is greenfield: `backend/` is a uv-managed Python package (`src/app/`) — run tests with `cd backend && uv run pytest`. `frontend/` is a Next.js app, no longer a bare scaffold — see K8 below.
 
 ## Status — work breakdown (K1–K13)
 
@@ -34,7 +34,9 @@ Keep this table and `docs/negotiator-implementation-plan.html`'s status fact til
 | K10 | Report generator + UI | Not started |
 | K11 | Red-flag engine | Not started |
 | K12 | Demo assets | Not started |
-| K13 | Auth & multi-tenancy | **Done (backend)** — `backend/src/app/auth.py`, `api.py` ownership checks, `backend/supabase/migrations/20260718210604_specs_user_id.sql`. Frontend signup/login pages not started (frontend is still an empty scaffold) |
+| K13 | Auth & multi-tenancy | **Done (backend)** — `backend/src/app/auth.py`, `api.py` ownership checks, `backend/supabase/migrations/20260718210604_specs_user_id.sql`. Frontend signup/login pages not started |
+
+Cross-component integration gaps that are blocked on secrets, live external calls, or an unbuilt K-component (not on missing understanding) live in `TODO.md`. Update it in the same commit as whatever resolves or adds an item — same rule as the table above, never let it go stale.
 
 ## Locked decisions — do not re-litigate
 

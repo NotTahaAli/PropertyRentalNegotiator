@@ -297,7 +297,7 @@
 <section id="components">
   <div class="eyebrow">05 · Work breakdown</div>
   <h2>13 components, independently executable</h2>
-  <p>Each has one owner, a defined interface, and a definition of done. Interfaces agreed in the first 30 minutes mean nobody blocks on anybody overnight.</p>
+  <p>Each has one owner, a defined interface, and a definition of done. Interfaces agreed in the first 30 minutes mean nobody blocks on anybody overnight. Cross-component gaps blocked on secrets, live external calls, or an unbuilt component — not on missing understanding — are tracked in <code>TODO.md</code>, not here.</p>
   <table>
     <tr><th>#</th><th>Component</th><th>Owner</th><th>Est</th><th>Needs</th><th>Status</th><th>Interface / Definition of done</th></tr>
     <tr><td>K1</td><td><b>vertical.json schema + shop_rental config</b></td><td><span class="owner oc">C</span></td><td>1.5h</td><td>—</td><td class="stat-done">Done</td><td>File in repo, validated by a 20-line pydantic model. Everything downstream imports this. <b>Do first.</b></td></tr>
