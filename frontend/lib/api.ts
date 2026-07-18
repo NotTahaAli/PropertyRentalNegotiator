@@ -40,11 +40,19 @@ export async function submitSpec(spec: JobSpec): Promise<IntakeSubmitResponse> {
     await new Promise((r) => setTimeout(r, 600));
     return { spec_id: "spec_mock_001", dealers_seeded: 4 };
   }
+  // Backend SpecCreate wants {vertical, status, spec_json, confirmed};
+  // it returns the full spec row and does not seed dealers (see TODO.md).
   const r = await fetch(`${BASE}/specs`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify(spec),
+    body: JSON.stringify({
+      vertical: spec.vertical,
+      status: "confirmed",
+      spec_json: spec,
+      confirmed: true,
+    }),
   });
   if (!r.ok) throw new Error(`submit failed: ${r.status}`);
-  return r.json();
+  const row = await r.json();
+  return { spec_id: row.id, dealers_seeded: 0 };
 }

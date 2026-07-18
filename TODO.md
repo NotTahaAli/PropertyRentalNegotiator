@@ -13,20 +13,14 @@ an item; delete resolved items instead of checking them off.
   returning `{kind, partial_spec, raw_text_preview}` (see `ParsedDoc` in
   `frontend/lib/types.ts`).
 
-- **`POST /specs`** — the real endpoint exists; auth is now wired (K13
-  frontend done on `auth-ui`: login/signup + Bearer token attached in
-  `frontend/lib/api.ts`), but two shape gaps still block going live:
-  1. Request shape: frontend sends a flat `JobSpec`; backend's `SpecCreate`
-     expects `{vertical, status, spec_json, benchmark_json?, confirmed?}` —
-     the spec needs wrapping into `spec_json`.
-  2. Response shape: frontend expects `{spec_id, dealers_seeded}` back;
-     `create_spec` returns the full spec row and does not seed dealers —
-     dealer seeding today is a standalone script (`backend/src/app/seed.py`),
-     not tied to spec creation.
-  Unblocks when someone decides whether dealer-seeding-on-create becomes
-  real backend behavior or stays a separate frontend-side call after
-  `/specs` succeeds (the frontend adapter in `lib/api.ts` can wrap/unwrap
-  either way).
+- **Dealer seeding on spec create** — `POST /specs` is now fully wired from
+  the frontend (auth token + shape adapter in `frontend/lib/api.ts`: wraps
+  the flat `JobSpec` into `spec_json`, unwraps the returned row into
+  `{spec_id, dealers_seeded}`). But `create_spec` does not seed dealers —
+  seeding is still the standalone `backend/src/app/seed.py` script, so the
+  adapter reports `dealers_seeded: 0`. Open decision: seed-on-create in the
+  backend, or a separate frontend call after `/specs` succeeds. K9 needs
+  dealers to exist to show anything.
 
 - **Real ElevenLabs Estimator agent id** — `frontend/.env.local`'s
   `NEXT_PUBLIC_ELEVENLABS_ESTIMATOR_AGENT_ID` is a placeholder. Getting a
