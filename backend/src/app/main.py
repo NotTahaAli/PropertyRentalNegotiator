@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 
 from .api import calls_router, dealers_router, quotes_router, specs_router
+from .parse import parse_router
 
 app = FastAPI(title="The Negotiator API")
 
+app.include_router(parse_router)
 app.include_router(specs_router)
 app.include_router(dealers_router)
 app.include_router(calls_router)

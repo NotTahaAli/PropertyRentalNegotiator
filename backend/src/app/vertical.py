@@ -54,6 +54,8 @@ class VerticalConfig(BaseModel):
     estimator_prompt: str
     negotiator_prompt: str
     persona_prompts: dict[str, str]
+    first_messages: dict[str, str]
+    fee_hints: dict[str, str]
 
 
 def load_vertical(path: Path = DEFAULT_CONFIG_PATH) -> VerticalConfig:
@@ -65,6 +67,8 @@ def build_spec_model(config: VerticalConfig) -> type[BaseModel]:
     fields = {}
     for name, field in config.spec_schema.items():
         if field.type == "enum":
+            if not field.values:
+                raise ValueError(f"spec_schema field '{name}' is type 'enum' but has no values list")
             py_type = Literal[tuple(field.values)]
         else:
             py_type = _TYPE_MAP[field.type]

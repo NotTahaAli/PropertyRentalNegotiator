@@ -64,11 +64,21 @@ class QuoteCreate(BaseModel):
     maintenance: Optional[float] = None
     annual_increment_pct: Optional[float] = None
     other_fees: Optional[dict[str, Any]] = None
-    total_first_year: float
     binding: bool = False
     notes: Optional[str] = None
     flagged: bool = False
     flag_reason: Optional[str] = None
+
+
+def _total_first_year(body: QuoteCreate) -> float:
+    other_fees_total = sum(body.other_fees.values()) if body.other_fees else 0
+    return (
+        12 * body.monthly_rent
+        + (body.advance_months or 0) * body.monthly_rent
+        + (body.commission or 0)
+        + 12 * (body.maintenance or 0)
+        + other_fees_total
+    )
 
 
 def _get_or_404(row: dict[str, Any] | None) -> dict[str, Any]:
@@ -260,7 +270,8 @@ def create_quote(
     body: QuoteCreate, user_id: str = Depends(get_current_user_id)
 ) -> dict[str, Any]:
     _require_call_owner(body.call_id, user_id)
-    return crud.create_quote(body.model_dump())
+    row = {**body.model_dump(), "total_first_year": _total_first_year(body)}
+    return crud.create_quote(row)
 
 
 @quotes_router.get("/{id}")
