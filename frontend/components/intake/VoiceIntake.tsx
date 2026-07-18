@@ -71,7 +71,18 @@ export default function VoiceIntake({ onField, onSkip }: VoiceIntakeProps) {
         {configured ? (
           <div className="mt-6">
             <Script src={CONVAI_SCRIPT_SRC} strategy="afterInteractive" />
-            <elevenlabs-convai agent-id={agentId} />
+            {/* Panel colors/placement live in the ElevenLabs dashboard widget
+                settings (Owner B); only orb colors + texts are embed-side. */}
+            <elevenlabs-convai
+              agent-id={agentId}
+              avatar-orb-color-1="#CFA44E"
+              avatar-orb-color-2="#1A1A1F"
+              action-text="Talk to the estimator"
+              start-call-text="Start interview"
+              end-call-text="End interview"
+              listening-text="Listening..."
+              speaking-text="Estimator speaking"
+            />
           </div>
         ) : (
           <div className="mt-6 rounded-lg border border-dashed border-border-hover bg-elevated p-5">
@@ -109,7 +120,16 @@ declare module "react" {
   namespace JSX {
     interface IntrinsicElements {
       "elevenlabs-convai": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & { "agent-id"?: string },
+        React.HTMLAttributes<HTMLElement> & {
+          "agent-id"?: string;
+          "avatar-orb-color-1"?: string;
+          "avatar-orb-color-2"?: string;
+          "action-text"?: string;
+          "start-call-text"?: string;
+          "end-call-text"?: string;
+          "listening-text"?: string;
+          "speaking-text"?: string;
+        },
         HTMLElement
       >;
     }
