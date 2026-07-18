@@ -49,7 +49,7 @@ Schema lives in `supabase/migrations/`, one table per row of the CLAUDE.md schem
 ```bash
 supabase link --project-ref <your-project-ref>   # once, needs Supabase login
 supabase db push                                  # applies migrations to the linked project
-uv run python -m app.seed                         # inserts 1 sample spec + 4 dealer personas
+uv run python -m app.seed <user-id>               # inserts 1 sample spec + 4 dealer personas for that user
 ```
 
 `crud.py` currently exposes `create`/`get`/`list` only. `update`/`delete` for `quotes`/`calls` are added by K4 (tool webhooks) and K11 (red-flag engine), which are the first consumers that need them.
@@ -75,7 +75,7 @@ print(session.session.access_token)
 uv run uvicorn app.main:app --reload
 ```
 
-Serves at `http://127.0.0.1:8000`. `GET /health` for the Render pinger; `POST`/`GET /specs`, `/dealers`, `/dealers?spec_id=`, `/calls`, `/calls?spec_id=`, `/quotes`, `/quotes?call_id=`, plus `GET /{resource}/{id}` (404 if missing). Frontend talks to these, never to Supabase directly. Interactive docs at `/docs`.
+Serves at `http://127.0.0.1:8000`. `GET /health` for the Render pinger (no auth). Everything else needs `Authorization: Bearer <token>`: `POST`/`GET /specs`; `POST /dealers`, `GET /dealers?spec_id=` (required); `POST /calls`, `GET /calls?spec_id=` (required); `POST /quotes`, `GET /quotes?call_id=` (required); plus `GET /{resource}/{id}` (404 if missing or not owned by the caller). Frontend talks to these, never to Supabase directly. Interactive docs at `/docs`.
 
 ## Running tests
 

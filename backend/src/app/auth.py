@@ -28,4 +28,7 @@ def get_current_user_id(
         )
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail="invalid token") from exc
-    return payload["sub"]
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="token missing sub claim")
+    return user_id

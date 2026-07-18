@@ -14,7 +14,7 @@ Still scoped to today's hackathon deadline and free-tier-only constraint — no 
 
 ## Data model
 
-- `specs.user_id uuid not null references auth.users(id)` — one new column, one new migration (`0002_specs_user_id.sql`). Does not touch the already-applied `0001_init.sql`.
+- `specs.user_id uuid not null references auth.users(id)` — one new column, one new migration (applied live as `20260718210604_specs_user_id.sql`, timestamp-named to match the Supabase CLI's convention). Does not touch the already-applied `20260718201325_init.sql`.
 - `dealers`, `calls`, `quotes` get no `user_id` column. Ownership is inherited through `spec_id` / `call_id` chains — one root of truth, no duplicated ownership data to drift out of sync.
 
 ## Enforcement (closes a real cross-tenant leak)
