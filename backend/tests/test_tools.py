@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import tools
+from app import crud, tools
 from app.main import app
 
 client = TestClient(app)
@@ -126,3 +126,20 @@ def test_multiple_rules_confirm_then_flag_wins():
     assert result["action"] == "confirm_then_flag"
     assert len(result["reasons"]) == 3
     assert result["confirm_question"]
+
+
+# --- POST /tools/get_benchmark -------------------------------------------
+
+def test_get_benchmark_endpoint(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: _spec() if id == "s1" else None)
+    response = client.post("/tools/get_benchmark", json={"spec_id": "s1"}, headers=_headers())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["monthly_low"] == 162000
+    assert body["source"] == "fallback"
+
+
+def test_get_benchmark_unknown_spec_404(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: None)
+    response = client.post("/tools/get_benchmark", json={"spec_id": "nope"}, headers=_headers())
+    assert response.status_code == 404

@@ -10,7 +10,10 @@ import secrets
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 
+from . import crud
+from .api import _get_or_404
 from .vertical import load_vertical
 
 
@@ -106,6 +109,11 @@ def check_redflag():
     raise HTTPException(status_code=501)
 
 
+class SpecIdBody(BaseModel):
+    spec_id: str
+
+
 @tools_router.post("/get_benchmark")
-def get_benchmark():
-    raise HTTPException(status_code=501)
+def get_benchmark(body: SpecIdBody) -> dict[str, Any]:
+    spec = _get_or_404(crud.get_spec(body.spec_id))
+    return _benchmark(spec)
