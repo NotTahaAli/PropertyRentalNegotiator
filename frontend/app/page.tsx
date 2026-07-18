@@ -78,7 +78,7 @@ export default function Home() {
           {FEATURES.map((f, i) => (
             <div
               key={f.num}
-              className={`anim-slide-right delay-${(i + 2) * 150} card-hover rounded-xl border border-border bg-surface p-5 sm:p-6`}
+              className="anim-slide-right card-hover rounded-xl border border-border bg-surface p-5 sm:p-6"
               style={{ animationDelay: `${(i + 2) * 100}ms` }}
             >
               <div className="flex items-center gap-3">

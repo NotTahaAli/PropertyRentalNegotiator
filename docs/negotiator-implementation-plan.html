@@ -154,7 +154,7 @@
     <div class="fact"><b>Cost budget</b><span>PKR 0 — free tiers only</span></div>
     <div class="fact"><b>Keys in hand</b><span>ElevenLabs · OpenAI · Tavily</span></div>
     <div class="fact"><b>Buffer</b><span>7–10 AM dead zone + 30 min pre-submit</span></div>
-    <div class="fact"><b>Status</b><span id="status-tile" class="stat-wip">K1 · K2 · K3 · K13 (backend) · K8 (mock) done · 8 pending</span></div>
+    <div class="fact"><b>Status</b><span id="status-tile" class="stat-wip">K1 · K2 · K3 · K13 · K8 (mock) done · 8 pending</span></div>
   </div>
 </header>
 
@@ -312,7 +312,7 @@
     <tr><td>K10</td><td><b>Report generator + UI</b></td><td><span class="owner oc">C</span> gen · <span class="owner oa">A</span> UI</td><td>2h + 2h</td><td>K2, K4</td><td class="stat-todo">Not started</td><td>Ranked table by <code>total_first_year</code>, flags with reasons, recommended deal, plain-language why, transcript citations, recording links.</td></tr>
     <tr><td>K11</td><td><b>Red-flag engine</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K1, K7</td><td class="stat-todo">Not started</td><td>Config-driven rules inside K4/K10. Unit-tested against the Lowballer's numbers: catches, confirms, flags, never ranks #1 silently. Also adds <code>update_quote</code> for writing <code>flagged</code>/<code>flag_reason</code> (K2's CRUD layer is create/get/list only).</td></tr>
     <tr><td>K12</td><td><b>Demo assets</b></td><td><span class="owner oall">ALL</span></td><td>rolling</td><td>everything</td><td class="stat-todo">Not started</td><td>Golden call recordings, demo video, tech pitch video, 2nd vertical config, submission answers, repo zip.</td></tr>
-    <tr><td>K13</td><td><b>Auth & multi-tenancy</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K2</td><td class="stat-done">Done (backend)</td><td>Supabase Auth (email+password); specs.user_id; FastAPI verifies JWT via JWKS and enforces ownership on every endpoint. Frontend signup/login pages not started.</td></tr>
+    <tr><td>K13</td><td><b>Auth & multi-tenancy</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K2</td><td class="stat-done">Done</td><td>Supabase Auth (email+password); specs.user_id; FastAPI verifies JWT via JWKS and enforces ownership on every endpoint. Frontend: login/signup pages, supabase-js sessions, /intake route guard, Bearer token on API calls.</td></tr>
   </table>
   <div class="call">
     <b>Anti-block rule</b>

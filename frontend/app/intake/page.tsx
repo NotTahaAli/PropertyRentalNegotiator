@@ -170,7 +170,9 @@ export default function IntakePage() {
             onFieldChange={(key, value) => dispatch({ type: "MANUAL_EDIT", key, value })}
           />
           {submitError && (
-            <p className="mt-3 text-sm text-error">{submitError}</p>
+            <p role="alert" className="mt-3 text-sm text-error">
+              {submitError}
+            </p>
           )}
           <ConfirmBar
             onBack={() => dispatch({ type: "GOTO", step: 2 })}
