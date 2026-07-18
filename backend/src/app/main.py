@@ -1,9 +1,20 @@
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .api import calls_router, dealers_router, quotes_router, specs_router
 from .parse import parse_router
 
 app = FastAPI(title="The Negotiator API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.environ["CORS_ORIGINS"].split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(parse_router)
 app.include_router(specs_router)
