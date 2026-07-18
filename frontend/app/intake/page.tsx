@@ -105,6 +105,7 @@ export default function IntakePage() {
   const [invalidFields, setInvalidFields] = useState<Set<keyof JobSpec>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [docsComplete, setDocsComplete] = useState(false);
 
   async function handleConfirm() {
     const missing = REQUIRED_SPEC_FIELDS.filter((f) => isFieldMissing(spec, f));
@@ -129,7 +130,7 @@ export default function IntakePage() {
   }
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <StepHeader step={step} />
 
       {step === 1 && (
@@ -140,11 +141,23 @@ export default function IntakePage() {
       )}
 
       {step === 2 && (
-        <div className="flex flex-col gap-4">
-          <DocUpload onParsed={(parsed) => dispatch({ type: "DOC_PARSED", parsed })} />
-          <Button onClick={() => dispatch({ type: "GOTO", step: 3 })} className="self-end">
-            Continue to Confirm →
-          </Button>
+        <div className="step-enter flex flex-col gap-6">
+          <DocUpload 
+            onParsed={(parsed) => dispatch({ type: "DOC_PARSED", parsed })} 
+            onCompletionChange={setDocsComplete}
+          />
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" onClick={() => dispatch({ type: "GOTO", step: 1 })}>
+              ← Back to voice
+            </Button>
+            <Button 
+              variant="secondary" 
+              onClick={() => dispatch({ type: "GOTO", step: 3 })}
+              disabled={!docsComplete}
+            >
+              Continue to confirm →
+            </Button>
+          </div>
         </div>
       )}
 
@@ -156,7 +169,9 @@ export default function IntakePage() {
             invalidFields={invalidFields}
             onFieldChange={(key, value) => dispatch({ type: "MANUAL_EDIT", key, value })}
           />
-          {submitError && <p className="mt-3 text-sm text-red">{submitError}</p>}
+          {submitError && (
+            <p className="mt-3 text-sm text-error">{submitError}</p>
+          )}
           <ConfirmBar
             onBack={() => dispatch({ type: "GOTO", step: 2 })}
             onConfirm={handleConfirm}

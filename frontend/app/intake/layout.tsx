@@ -1,4 +1,4 @@
-import OnAirDot from "@/components/ui/OnAirDot";
+import Link from "next/link";
 
 export default function IntakeLayout({
   children,
@@ -6,16 +6,24 @@ export default function IntakeLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-ink text-text">
-      <header className="border-b border-line px-7 py-6">
-        <div className="mx-auto flex max-w-3xl items-center gap-3">
-          <OnAirDot />
-          <span className="font-mono text-[11px] uppercase tracking-[.18em] text-amber">
-            The Negotiator · Intake
-          </span>
-        </div>
-      </header>
-      <main className="mx-auto max-w-3xl px-7 py-10">{children}</main>
+    <div className="flex min-h-screen flex-col bg-bg text-text">
+      {/* ── nav bar ── */}
+      <nav className="flex items-center justify-between border-b border-border px-6 py-4 sm:px-10">
+        <Link
+          href="/"
+          className="tr font-display text-sm font-semibold tracking-tight text-text hover:text-accent"
+        >
+          PropertyRentalNegotiator
+        </Link>
+        <span className="font-mono text-xs text-text-dim">
+          Intake form
+        </span>
+      </nav>
+
+      {/* ── content ── */}
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-6 py-8 sm:px-10 lg:py-12">
+        {children}
+      </main>
     </div>
   );
 }

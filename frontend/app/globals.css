@@ -1,35 +1,162 @@
 @import "tailwindcss";
 
 :root {
-  --ink: #0d1117;
-  --panel: #151b23;
-  --panel-2: #1b2330;
-  --line: #2a3442;
-  --text: #dde3ea;
-  --muted: #8b97a5;
-  --amber: #ffb224;
-  --green: #3dd68c;
-  --red: #f2555a;
-  --blue: #6cb2ff;
+  /* ── backgrounds ── */
+  --bg: #08080A;
+  --surface: #111114;
+  --elevated: #1A1A1F;
+  --overlay: #222228;
+
+  /* ── borders ── */
+  --border: #1F1F26;
+  --border-hover: #2E2E38;
+  --border-active: #3E3E4A;
+
+  /* ── text ── */
+  --text: #EAEAED;
+  --text-secondary: #87878F;
+  --text-dim: #4E4E58;
+
+  /* ── primary (white CTAs — Vercel-like) ── */
+  --primary: #EAEAED;
+  --primary-fg: #08080A;
+
+  /* ── accent (warm gold — active/highlight) ── */
+  --accent: #CFA44E;
+  --accent-dim: rgba(207, 164, 78, 0.10);
+
+  /* ── semantic ── */
+  --success: #34D399;
+  --success-dim: rgba(52, 211, 153, 0.10);
+  --error: #F06060;
+  --error-dim: rgba(240, 96, 96, 0.10);
+  --info: #7B9EF5;
+  --info-dim: rgba(123, 158, 245, 0.10);
 }
 
 @theme inline {
-  --color-ink: var(--ink);
-  --color-panel: var(--panel);
-  --color-panel-2: var(--panel-2);
-  --color-line: var(--line);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-overlay: var(--overlay);
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-border-active: var(--border-active);
   --color-text: var(--text);
-  --color-muted: var(--muted);
-  --color-amber: var(--amber);
-  --color-green: var(--green);
-  --color-red: var(--red);
-  --color-blue: var(--blue);
-  --font-display: var(--font-bricolage);
-  --font-sans: var(--font-instrument);
-  --font-mono: var(--font-plex-mono);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-dim: var(--text-dim);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-success: var(--success);
+  --color-success-dim: var(--success-dim);
+  --color-error: var(--error);
+  --color-error-dim: var(--error-dim);
+  --color-info: var(--info);
+  --color-info-dim: var(--info-dim);
+  --font-display: var(--font-space-grotesk);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 body {
-  background: var(--ink);
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ═══ subtle ambient glow at top ═══ */
+.ambient-glow {
+  background-image: radial-gradient(
+    ellipse 80% 40% at 50% -10%,
+    rgba(207, 164, 78, 0.04) 0%,
+    transparent 70%
+  );
+}
+
+/* ═══ animations ═══ */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slide-right {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+@keyframes progress-fill {
+  from { width: 0%; }
+}
+@keyframes border-glow {
+  0%, 100% { border-color: var(--border); }
+  50%      { border-color: var(--border-hover); }
+}
+
+.anim-fade-up    { animation: fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-fade-in    { animation: fade-in 0.4s ease both; }
+.anim-slide-right { animation: slide-right 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-scale-in   { animation: scale-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+.delay-75  { animation-delay: 75ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-225 { animation-delay: 225ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+
+/* ═══ smooth transitions for everything interactive ═══ */
+.tr {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ═══ card hover lift ═══ */
+.card-hover {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.25s ease,
+              background-color 0.25s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-hover);
+  background-color: var(--elevated);
+}
+
+/* ═══ step content transition ═══ */
+.step-enter {
+  animation: fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ═══ recording indicator ═══ */
+.rec-pulse {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ═══ focus ring ═══ */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ═══ scrollbar ═══ */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+/* ═══ selection ═══ */
+::selection {
+  background: rgba(207, 164, 78, 0.25);
   color: var(--text);
 }

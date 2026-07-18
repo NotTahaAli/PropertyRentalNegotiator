@@ -8,8 +8,10 @@ export default function Select({
 }: SelectHTMLAttributes<HTMLSelectElement> & { invalid?: boolean }) {
   return (
     <select
-      className={`w-full rounded-md border bg-panel-2 px-3 py-2 text-text focus:outline-none focus:ring-2 ${
-        invalid ? "border-amber ring-amber" : "border-line ring-blue"
+      className={`tr w-full rounded-lg border bg-surface px-3.5 py-2.5 text-sm text-text focus:outline-none focus:ring-1 ${
+        invalid
+          ? "border-error/60 focus:ring-error/40"
+          : "border-border hover:border-border-hover focus:border-accent/50 focus:ring-accent/30"
       } ${className}`}
       {...props}
     >

@@ -8,12 +8,12 @@ interface ConfirmBarProps {
 
 export default function ConfirmBar({ onBack, onConfirm, submitting }: ConfirmBarProps) {
   return (
-    <div className="sticky bottom-0 mt-6 flex items-center justify-between border-t border-line bg-ink/95 px-1 py-4 shadow-[0_-8px_20px_-12px_rgba(0,0,0,0.6)]">
+    <div className="sticky bottom-0 mt-8 flex items-center justify-between border-t border-border bg-bg/95 px-1 py-4 backdrop-blur-sm">
       <Button variant="ghost" onClick={onBack} disabled={submitting}>
         ← Back to docs
       </Button>
       <Button onClick={onConfirm} disabled={submitting}>
-        {submitting ? "Submitting..." : "Confirm & Start Calls →"}
+        {submitting ? "Submitting..." : "Confirm & start calls →"}
       </Button>
     </div>
   );
