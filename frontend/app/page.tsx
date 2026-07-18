@@ -1,5 +1,6 @@
 import Link from "next/link";
 import NavAuth from "@/components/auth/NavAuth";
+import Protected from "@/components/auth/Protected";
 
 const FEATURES = [
   {
@@ -23,6 +24,14 @@ const FEATURES = [
 ] as const;
 
 export default function Home() {
+  return (
+    <Protected>
+      <HomeContent />
+    </Protected>
+  );
+}
+
+function HomeContent() {
   return (
     <div className="flex min-h-screen flex-col bg-bg ambient-glow">
       {/* ── nav bar ── */}
