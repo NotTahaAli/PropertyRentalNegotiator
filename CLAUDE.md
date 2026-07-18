@@ -27,7 +27,7 @@ Keep this table and `docs/negotiator-implementation-plan.html`'s status fact til
 | K3 | Agent factory script | **Done** — `backend/src/app/agent_factory.py`, `backend/src/app/make_agents.py`. 4 webhook tools + 6 agents created live in ElevenLabs, idempotent via `backend/config/agents.generated.json` |
 | K4 | Tool webhooks ×4 | Not started |
 | K5 | Agent-to-agent audio bridge | Not started |
-| K6 | Doc parser | Not started |
+| K6 | Doc parser | **Done** — `backend/src/app/parse.py`, `backend/tests/test_parse.py`. `POST /parse` (JWT-gated, stateless): PDF/PNG/JPEG sent to OpenAI (`gpt-5.4-mini`, structured outputs), DOCX text pulled via stdlib. Unknown fields omitted, never guessed — live-verified (blank image yields empty spec). Frontend `parseDoc` auth-header wiring waits on K13 frontend (see TODO.md) |
 | K7 | Benchmark service | Not started |
 | K8 | Intake UI | **Done (mock)** — `frontend/app/intake/`, `frontend/components/intake/`; real endpoint swap pending 12–2 PM window |
 | K9 | Call Center UI | Not started — needs K13 for a logged-in user |

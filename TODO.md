@@ -7,11 +7,12 @@ an item; delete resolved items instead of checking them off.
 
 ## Blocked: frontend K8 → backend wiring
 
-- **`POST /parse`** — `frontend/lib/api.ts:parseDoc()` calls `${BASE}/parse`
-  when `NEXT_PUBLIC_USE_MOCKS=false`, but no `/parse` route exists on the
-  backend (K6 doc parser not started). Unblocks when K6 ships an endpoint
-  returning `{kind, partial_spec, raw_text_preview}` (see `ParsedDoc` in
-  `frontend/lib/types.ts`).
+- **`POST /parse`** — backend route now live (K6, `backend/src/app/parse.py`),
+  verified against real OpenAI. Remaining blocker: the endpoint requires a
+  Supabase JWT but `frontend/lib/api.ts:parseDoc()` sends no Authorization
+  header — there is no client-side session to read a token from until K13
+  frontend (login) exists. Unblocks with K13 frontend: add the bearer header
+  to `parseDoc`. Backend also needs `OPENAI_API_KEY` set on Render at deploy.
 
 - **`POST /specs`** — the real endpoint exists but three things block wiring
   it live, not one:
