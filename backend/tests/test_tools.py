@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app import tools
 from app.main import app
 
 client = TestClient(app)
@@ -38,3 +39,90 @@ def test_wrong_secret_rejected(path):
 def test_unset_server_secret_fails_closed(path, monkeypatch):
     monkeypatch.delenv("TOOLS_WEBHOOK_SECRET")
     assert client.post(path, json={}, headers={"X-Tools-Secret": ""}).status_code == 401
+
+
+# --- _benchmark ----------------------------------------------------------
+
+def _spec(area=900, benchmark_json=None):
+    spec_json = {"location": "Gulberg Lahore"}
+    if area is not None:
+        spec_json["area_sqft"] = area
+    return {"id": "s1", "spec_json": spec_json, "benchmark_json": benchmark_json}
+
+
+def test_benchmark_fallback_scaled_by_area():
+    result = tools._benchmark(_spec(area=900))
+    assert result == {
+        "currency": "PKR",
+        "per_sqft_low": 180,
+        "per_sqft_high": 450,
+        "area_sqft": 900,
+        "monthly_low": 162000,
+        "monthly_high": 405000,
+        "source": "fallback",
+    }
+
+
+def test_benchmark_cached_json_wins():
+    result = tools._benchmark(_spec(area=100, benchmark_json={"per_sqft_low": 200, "per_sqft_high": 400}))
+    assert result["per_sqft_low"] == 200
+    assert result["monthly_low"] == 20000
+    assert result["monthly_high"] == 40000
+    assert result["source"] == "cached"
+
+
+def test_benchmark_without_area_omits_monthly():
+    result = tools._benchmark(_spec(area=None))
+    assert result["per_sqft_low"] == 180
+    assert result["area_sqft"] is None
+    assert result["monthly_low"] is None
+    assert result["monthly_high"] is None
+
+
+# --- evaluate_red_flags --------------------------------------------------
+# fallback low for area 900 = 162000; below-market boundary = 0.7 * 162000 = 113400
+
+def test_clear_quote_passes_all_rules():
+    result = tools.evaluate_red_flags(_spec(), monthly_rent=200000, advance_months=3, binding=True)
+    assert result["action"] == "clear"
+    assert result["reasons"] == []
+    assert result["confirm_question"] is None
+    assert result["benchmark"]["monthly_low"] == 162000
+
+
+def test_below_market_fires_under_boundary():
+    result = tools.evaluate_red_flags(_spec(), monthly_rent=113399, binding=True)
+    assert result["action"] == "confirm_then_flag"
+    assert result["confirm_question"]
+    assert any("below" in r for r in result["reasons"])
+
+
+def test_below_market_not_fired_at_boundary():
+    result = tools.evaluate_red_flags(_spec(), monthly_rent=113400, binding=True)
+    assert result["action"] == "clear"
+
+
+def test_below_market_skipped_without_area():
+    result = tools.evaluate_red_flags(_spec(area=None), monthly_rent=1, binding=True)
+    assert result["action"] == "clear"
+
+
+def test_no_written_quote_fires_on_false_and_absent():
+    for binding in (False, None):
+        result = tools.evaluate_red_flags(_spec(), monthly_rent=200000, binding=binding)
+        assert result["action"] == "flag"
+        assert any("written" in r for r in result["reasons"])
+
+
+def test_advance_months_boundary():
+    fired = tools.evaluate_red_flags(_spec(), monthly_rent=200000, advance_months=7, binding=True)
+    assert fired["action"] == "flag"
+    ok = tools.evaluate_red_flags(_spec(), monthly_rent=200000, advance_months=6, binding=True)
+    assert ok["action"] == "clear"
+
+
+def test_multiple_rules_confirm_then_flag_wins():
+    result = tools.evaluate_red_flags(_spec(), monthly_rent=90000, advance_months=12, binding=None)
+    assert result["action"] == "confirm_then_flag"
+    assert len(result["reasons"]) == 3
+    assert result["confirm_question"]
