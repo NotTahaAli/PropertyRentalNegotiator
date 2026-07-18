@@ -23,9 +23,10 @@ interface SlotProps {
   kind: ParsedDoc["kind"];
   onParsed: (parsed: ParsedDoc) => void;
   onDone: (isDone: boolean) => void;
+  onParseFailed?: () => void;
 }
 
-function UploadSlot({ label, kind, onParsed, onDone }: SlotProps) {
+function UploadSlot({ label, kind, onParsed, onDone, onParseFailed }: SlotProps) {
   const [state, setState] = useState<SlotState>({ status: "idle" });
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +56,7 @@ function UploadSlot({ label, kind, onParsed, onDone }: SlotProps) {
     } catch {
       setState({ status: "error", fileName: file.name, message: "Parse failed" });
       onDone(false);
+      onParseFailed?.();
     }
   }
 
@@ -147,9 +149,11 @@ function UploadSlot({ label, kind, onParsed, onDone }: SlotProps) {
 export default function DocUpload({
   onParsed,
   onCompletionChange,
+  onParseFailed,
 }: {
   onParsed: (parsed: ParsedDoc) => void;
   onCompletionChange?: (isComplete: boolean) => void;
+  onParseFailed?: () => void;
 }) {
   const [rentDone, setRentDone] = useState(false);
   const [reqDone, setReqDone] = useState(false);
@@ -160,8 +164,8 @@ export default function DocUpload({
 
   return (
     <div className="step-enter grid gap-4 sm:grid-cols-2">
-      <UploadSlot label="Rent agreement" kind="rent_agreement" onParsed={onParsed} onDone={setRentDone} />
-      <UploadSlot label="Requirements document" kind="requirements" onParsed={onParsed} onDone={setReqDone} />
+      <UploadSlot label="Rent agreement" kind="rent_agreement" onParsed={onParsed} onDone={setRentDone} onParseFailed={onParseFailed} />
+      <UploadSlot label="Requirements document" kind="requirements" onParsed={onParsed} onDone={setReqDone} onParseFailed={onParseFailed} />
     </div>
   );
 }

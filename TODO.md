@@ -13,21 +13,20 @@ an item; delete resolved items instead of checking them off.
   returning `{kind, partial_spec, raw_text_preview}` (see `ParsedDoc` in
   `frontend/lib/types.ts`).
 
-- **`POST /specs`** — the real endpoint exists but three things block wiring
-  it live, not one:
-  1. Auth: it requires a Supabase JWT (`Depends(get_current_user_id)`);
-     the frontend has no login/signup flow yet (K13 frontend not started),
-     so it has no token to send.
-  2. Request shape: frontend sends a flat `JobSpec`; backend's `SpecCreate`
+- **`POST /specs`** — the real endpoint exists; auth is now wired (K13
+  frontend done on `auth-ui`: login/signup + Bearer token attached in
+  `frontend/lib/api.ts`), but two shape gaps still block going live:
+  1. Request shape: frontend sends a flat `JobSpec`; backend's `SpecCreate`
      expects `{vertical, status, spec_json, benchmark_json?, confirmed?}` —
      the spec needs wrapping into `spec_json`.
-  3. Response shape: frontend expects `{spec_id, dealers_seeded}` back;
+  2. Response shape: frontend expects `{spec_id, dealers_seeded}` back;
      `create_spec` returns the full spec row and does not seed dealers —
      dealer seeding today is a standalone script (`backend/src/app/seed.py`),
      not tied to spec creation.
-  Unblocks when K13 frontend (login) exists, and someone decides whether
-  dealer-seeding-on-create becomes real backend behavior or stays a
-  separate frontend-side call after `/specs` succeeds.
+  Unblocks when someone decides whether dealer-seeding-on-create becomes
+  real backend behavior or stays a separate frontend-side call after
+  `/specs` succeeds (the frontend adapter in `lib/api.ts` can wrap/unwrap
+  either way).
 
 - **Real ElevenLabs Estimator agent id** — `frontend/.env.local`'s
   `NEXT_PUBLIC_ELEVENLABS_ESTIMATOR_AGENT_ID` is a placeholder. Getting a

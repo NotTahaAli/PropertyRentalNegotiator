@@ -3,9 +3,15 @@ import {
   MOCK_PARSE_RENT_AGREEMENT,
   MOCK_PARSE_REQUIREMENTS,
 } from "./mocks";
+import { getAccessToken } from "@/components/auth/AuthProvider";
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export async function parseDoc(
   file: File,
@@ -20,7 +26,11 @@ export async function parseDoc(
   const fd = new FormData();
   fd.append("file", file);
   fd.append("kind", kind);
-  const r = await fetch(`${BASE}/parse`, { method: "POST", body: fd });
+  const r = await fetch(`${BASE}/parse`, {
+    method: "POST",
+    headers: await authHeaders(),
+    body: fd,
+  });
   if (!r.ok) throw new Error(`parse failed: ${r.status}`);
   return r.json();
 }
@@ -32,7 +42,7 @@ export async function submitSpec(spec: JobSpec): Promise<IntakeSubmitResponse> {
   }
   const r = await fetch(`${BASE}/specs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify(spec),
   });
   if (!r.ok) throw new Error(`submit failed: ${r.status}`);

@@ -34,7 +34,7 @@ Keep this table and `docs/negotiator-implementation-plan.html`'s status fact til
 | K10 | Report generator + UI | Not started |
 | K11 | Red-flag engine | Not started |
 | K12 | Demo assets | Not started |
-| K13 | Auth & multi-tenancy | **Done (backend)** — `backend/src/app/auth.py`, `api.py` ownership checks, `backend/supabase/migrations/20260718210604_specs_user_id.sql`. Frontend signup/login pages not started |
+| K13 | Auth & multi-tenancy | **Done** — backend: `backend/src/app/auth.py`, `api.py` ownership checks, `backend/supabase/migrations/20260718210604_specs_user_id.sql`. Frontend: `frontend/app/(auth)/` login/signup, `frontend/components/auth/` (AuthProvider/Protected/AccountChip/NavAuth), supabase-js sessions, `/` + `/intake` route-guarded, API calls send Bearer token. Mock-mode verified + anon key probed live; full browser signup/login pass still to be clicked through |
 
 Cross-component integration gaps that are blocked on secrets, live external calls, or an unbuilt K-component (not on missing understanding) live in `TODO.md`. Update it in the same commit as whatever resolves or adds an item — same rule as the table above, never let it go stale.
 

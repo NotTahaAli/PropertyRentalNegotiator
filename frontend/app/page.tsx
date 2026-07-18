@@ -1,4 +1,6 @@
 import Link from "next/link";
+import NavAuth from "@/components/auth/NavAuth";
+import Protected from "@/components/auth/Protected";
 
 const FEATURES = [
   {
@@ -23,15 +25,26 @@ const FEATURES = [
 
 export default function Home() {
   return (
+    <Protected>
+      <HomeContent />
+    </Protected>
+  );
+}
+
+function HomeContent() {
+  return (
     <div className="flex min-h-screen flex-col bg-bg ambient-glow">
       {/* ── nav bar ── */}
       <nav className="flex items-center justify-between border-b border-border px-6 py-4 sm:px-10">
         <span className="font-display text-sm font-semibold tracking-tight text-text">
           PropertyRentalNegotiator
         </span>
-        <span className="font-mono text-xs text-text-dim">
-          Hack-Nation · 01
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="font-mono text-xs text-text-dim">
+            Hack-Nation · 01
+          </span>
+          <NavAuth />
+        </div>
       </nav>
 
       {/* ── main hero ── */}
@@ -74,7 +87,7 @@ export default function Home() {
           {FEATURES.map((f, i) => (
             <div
               key={f.num}
-              className={`anim-slide-right delay-${(i + 2) * 150} card-hover rounded-xl border border-border bg-surface p-5 sm:p-6`}
+              className="anim-slide-right card-hover rounded-xl border border-border bg-surface p-5 sm:p-6"
               style={{ animationDelay: `${(i + 2) * 100}ms` }}
             >
               <div className="flex items-center gap-3">
