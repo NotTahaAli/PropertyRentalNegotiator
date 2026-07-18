@@ -29,7 +29,7 @@ Keep this table and `docs/negotiator-implementation-plan.html`'s status fact til
 | K5 | Agent-to-agent audio bridge | Not started |
 | K6 | Doc parser | Not started |
 | K7 | Benchmark service | Not started |
-| K8 | Intake UI | Not started |
+| K8 | Intake UI | **Done (mock)** — `frontend/app/intake/`, `frontend/components/intake/`; real endpoint swap pending 12–2 PM window |
 | K9 | Call Center UI | Not started |
 | K10 | Report generator + UI | Not started |
 | K11 | Red-flag engine | Not started |
