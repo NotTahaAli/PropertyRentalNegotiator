@@ -16,6 +16,25 @@ Always work with these active — not optional:
 
 The repo is greenfield: `frontend/` is a scaffold. `backend/` is a uv-managed Python package (`src/app/`) — run tests with `cd backend && uv run pytest`.
 
+## Status — work breakdown (K1–K12)
+
+Keep this table and `docs/negotiator-implementation-plan.html`'s status fact tile + §05 Work Breakdown Status column in sync, always. The instant a K-component is finished (tests pass, committed), update its row here, update its row in the HTML table, and update the HTML status fact tile — same commit as the work. Never let this go stale.
+
+| # | Component | Status |
+| --- | --- | --- |
+| K1 | vertical.json schema + shop_rental config | **Done** — `backend/config/vertical.json`, `backend/src/app/vertical.py` |
+| K2 | Supabase schema + FastAPI data layer | Not started |
+| K3 | Agent factory script | Not started |
+| K4 | Tool webhooks ×4 | Not started |
+| K5 | Agent-to-agent audio bridge | Not started |
+| K6 | Doc parser | Not started |
+| K7 | Benchmark service | Not started |
+| K8 | Intake UI | Not started |
+| K9 | Call Center UI | Not started |
+| K10 | Report generator + UI | Not started |
+| K11 | Red-flag engine | Not started |
+| K12 | Demo assets | Not started |
+
 ## Locked decisions — do not re-litigate
 
 - Vertical: commercial shop rental, Pakistan. Everything vertical-specific lives in `vertical.json` (config, not code); an agent factory script generates all ElevenLabs agent prompts from it.
@@ -39,8 +58,8 @@ specs   (id, created_at, vertical, status, spec_json jsonb, benchmark_json jsonb
 dealers (id, spec_id, name, persona, phone_label, source)
 calls   (id, spec_id, dealer_id, round int, status, started_at, ended_at,
          recording_url, transcript_json jsonb, outcome)
-quotes  (id, call_id, dealer_id, monthly_rent, advance_months, commission,
-         maintenance, other_fees jsonb, total_first_year, binding, notes, flagged, flag_reason)
+quotes  (id, call_id, dealer_id, monthly_rent, advance_months, commission, maintenance,
+         annual_increment_pct, other_fees jsonb, total_first_year, binding, notes, flagged, flag_reason)
 ```
 
 `total_first_year` = 12×rent + advance + commission + 12×maintenance + other fees — the single comparison key that makes incomparable fee structures comparable.
