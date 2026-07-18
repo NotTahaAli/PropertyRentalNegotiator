@@ -17,7 +17,7 @@ export default function AuthLayout({
         <span className="font-mono text-xs text-text-dim">Account</span>
       </nav>
       <main className="flex flex-1 items-center justify-center px-6 py-12">
-        <div className="anim-fade-up w-full max-w-sm">{children}</div>
+        <div className="w-full max-w-sm">{children}</div>
       </main>
     </div>
   );
