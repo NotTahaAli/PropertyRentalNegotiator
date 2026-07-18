@@ -90,8 +90,11 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
     get_leverage = _webhook_tool(
         "get_leverage",
         "Returns the best real quotes logged so far for this spec. Empty if none exist yet.",
-        {"spec_id": {"type": "string", "description": "Current client spec id."}},
-        required=["spec_id"],
+        {
+            "spec_id": {"type": "string", "description": "Current client spec id."},
+            "dealer_id": {"type": "string", "description": "Current dealer id (their own quotes are excluded)."},
+        },
+        required=["spec_id", "dealer_id"],
     )
 
     get_benchmark = _webhook_tool(

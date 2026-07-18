@@ -52,6 +52,15 @@ def test_get_leverage_and_get_benchmark_bodies_exclude_fee_taxonomy():
         assert "spec_id" in props
 
 
+def test_get_leverage_requires_dealer_id():
+    config = load_vertical()
+    tools = build_tool_schemas(config)
+    get_leverage = next(t for t in tools if t["name"] == "get_leverage")
+    schema = get_leverage["api_schema"]["request_body_schema"]
+    assert "dealer_id" in schema["properties"]
+    assert set(schema["required"]) == {"spec_id", "dealer_id"}
+
+
 def test_build_tool_schemas_returns_exactly_four_tools():
     config = load_vertical()
     names = {t["name"] for t in build_tool_schemas(config)}

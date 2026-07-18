@@ -121,9 +121,36 @@ def log_quote(body: QuoteCreate) -> dict[str, Any]:
     }
 
 
+class LeverageRequest(BaseModel):
+    spec_id: str
+    dealer_id: str
+
+
 @tools_router.post("/get_leverage")
-def get_leverage():
-    raise HTTPException(status_code=501)
+def get_leverage(body: LeverageRequest) -> dict[str, Any]:
+    _get_or_404(crud.get_spec(body.spec_id))
+    dealer_names = {d["id"]: d["name"] for d in crud.list_dealers(spec_id=body.spec_id)}
+    quotes = [
+        q
+        for call in crud.list_calls(spec_id=body.spec_id)
+        # ponytail: N+1 over ~4-8 calls, fine at demo scale
+        for q in crud.list_quotes(call_id=call["id"])
+        if not q["flagged"] and q["dealer_id"] != body.dealer_id
+    ]
+    best = sorted(quotes, key=lambda q: q["total_first_year"])[:3]
+    return {
+        "quotes": [
+            {
+                "dealer": dealer_names.get(q["dealer_id"], "unknown"),
+                "monthly_rent": q["monthly_rent"],
+                "advance_months": q["advance_months"],
+                "commission": q["commission"],
+                "maintenance": q["maintenance"],
+                "total_first_year": q["total_first_year"],
+            }
+            for q in best
+        ]
+    }
 
 
 class RedflagCheck(BaseModel):

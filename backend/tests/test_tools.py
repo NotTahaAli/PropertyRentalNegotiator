@@ -242,6 +242,90 @@ def test_log_quote_lowball_unbinding_flagged(monkeypatch):
     assert "written" in captured["flag_reason"]
 
 
+# --- POST /tools/get_leverage --------------------------------------------
+
+def _quote(dealer_id, total, flagged=False, rent=100000):
+    return {
+        "id": f"q-{dealer_id}-{total}",
+        "dealer_id": dealer_id,
+        "monthly_rent": rent,
+        "advance_months": 2,
+        "commission": 50000,
+        "maintenance": 3000,
+        "total_first_year": total,
+        "flagged": flagged,
+    }
+
+
+def _wire_leverage(monkeypatch, quotes_by_call):
+    monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
+    monkeypatch.setattr(
+        crud,
+        "list_dealers",
+        lambda spec_id: [
+            {"id": "d1", "name": "Ali Estates"},
+            {"id": "d2", "name": "Khan Properties"},
+            {"id": "d3", "name": "Metro Realty"},
+        ],
+    )
+    monkeypatch.setattr(
+        crud, "list_calls", lambda spec_id: [{"id": c} for c in quotes_by_call]
+    )
+    monkeypatch.setattr(crud, "list_quotes", lambda call_id: quotes_by_call[call_id])
+
+
+def _leverage(dealer_id="d1"):
+    return client.post(
+        "/tools/get_leverage",
+        json={"spec_id": "s1", "dealer_id": dealer_id},
+        headers=_headers(),
+    )
+
+
+def test_get_leverage_sorted_top3_with_names(monkeypatch):
+    _wire_leverage(
+        monkeypatch,
+        {
+            "c1": [_quote("d2", 2000000), _quote("d2", 1800000)],
+            "c2": [_quote("d3", 1500000), _quote("d3", 2200000)],
+        },
+    )
+    body = _leverage("d1").json()
+    totals = [q["total_first_year"] for q in body["quotes"]]
+    assert totals == [1500000, 1800000, 2000000]
+    assert body["quotes"][0]["dealer"] == "Metro Realty"
+    assert set(body["quotes"][0]) == {
+        "dealer",
+        "monthly_rent",
+        "advance_months",
+        "commission",
+        "maintenance",
+        "total_first_year",
+    }
+
+
+def test_get_leverage_excludes_flagged_and_own(monkeypatch):
+    _wire_leverage(
+        monkeypatch,
+        {
+            "c1": [_quote("d1", 1000000)],  # caller's own
+            "c2": [_quote("d2", 1200000, flagged=True), _quote("d3", 1900000)],
+        },
+    )
+    body = _leverage("d1").json()
+    assert [q["total_first_year"] for q in body["quotes"]] == [1900000]
+
+
+def test_get_leverage_empty_when_nothing_qualifies(monkeypatch):
+    _wire_leverage(monkeypatch, {"c1": [_quote("d1", 1000000)]})
+    assert _leverage("d1").json() == {"quotes": []}
+
+
+def test_get_leverage_unknown_spec_404(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: None)
+    assert _leverage().status_code == 404
+
+
 def test_log_quote_unknown_call_404(monkeypatch):
     called = []
     monkeypatch.setattr(crud, "get_call", lambda id: None)
