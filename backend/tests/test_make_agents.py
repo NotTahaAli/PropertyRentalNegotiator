@@ -1,7 +1,14 @@
 import json
 
+import pytest
+
 from app.make_agents import upsert_all
 from app.vertical import load_vertical
+
+
+@pytest.fixture(autouse=True)
+def tools_secret(monkeypatch):
+    monkeypatch.setenv("TOOLS_WEBHOOK_SECRET", "test-secret")
 
 
 class FakeResource:
@@ -51,6 +58,18 @@ def test_first_run_creates_four_tools_and_six_agents():
     assert len(client.conversational_ai.agents.created) == 6
     assert len(manifest["tools"]) == 4
     assert len(manifest["agents"]) == 6
+
+
+def test_every_tool_sends_shared_secret_header():
+    config = load_vertical()
+    client = FakeClient()
+
+    upsert_all(client, config, manifest={}, backend_base_url="http://x")
+
+    assert client.conversational_ai.tools.created
+    for _tool_id, kwargs in client.conversational_ai.tools.created:
+        headers = kwargs["request"].tool_config.api_schema.request_headers
+        assert headers == {"X-Tools-Secret": "test-secret"}
 
 
 def test_agents_pinned_to_pcm_16000_audio_format():

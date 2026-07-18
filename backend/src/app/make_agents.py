@@ -37,6 +37,9 @@ def _tool_schema_to_request(tool: dict, backend_base_url: str):
         url=backend_base_url.rstrip("/") + tool["api_schema"]["url"],
         method=tool["api_schema"]["method"],
         request_body_schema=request_body_schema,
+        # KeyError on purpose: registering tools without the secret would leave them
+        # unable to call the backend (tools.py fails closed).
+        request_headers={"X-Tools-Secret": os.environ["TOOLS_WEBHOOK_SECRET"]},
     )
     tool_config = ToolRequestModelToolConfig_Webhook(
         name=tool["name"],
