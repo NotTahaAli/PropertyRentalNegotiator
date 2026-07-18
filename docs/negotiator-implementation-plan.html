@@ -154,7 +154,7 @@
     <div class="fact"><b>Cost budget</b><span>PKR 0 — free tiers only</span></div>
     <div class="fact"><b>Keys in hand</b><span>ElevenLabs · OpenAI · Tavily</span></div>
     <div class="fact"><b>Buffer</b><span>7–10 AM dead zone + 30 min pre-submit</span></div>
-    <div class="fact"><b>Status</b><span id="status-tile" class="stat-wip">K1 done · 11 pending</span></div>
+    <div class="fact"><b>Status</b><span id="status-tile" class="stat-wip">K1 · K2 done · 10 pending</span></div>
   </div>
 </header>
 
@@ -298,16 +298,16 @@
   <table>
     <tr><th>#</th><th>Component</th><th>Owner</th><th>Est</th><th>Needs</th><th>Status</th><th>Interface / Definition of done</th></tr>
     <tr><td>K1</td><td><b>vertical.json schema + shop_rental config</b></td><td><span class="owner oc">C</span></td><td>1.5h</td><td>—</td><td class="stat-done">Done</td><td>File in repo, validated by a 20-line pydantic model. Everything downstream imports this. <b>Do first.</b></td></tr>
-    <tr><td>K2</td><td><b>Supabase schema + FastAPI data layer</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>—</td><td class="stat-todo">Not started</td><td>4 tables live; CRUD helpers; seed script inserts 4 dealers + 1 sample spec.</td></tr>
+    <tr><td>K2</td><td><b>Supabase schema + FastAPI data layer</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>—</td><td class="stat-done">Done</td><td>4 tables live; CRUD helpers; seed script inserts 4 dealers + 1 sample spec. CRUD is create/get/list only — K4/K11 add update/delete for <code>quotes</code>/<code>calls</code>.</td></tr>
     <tr><td>K3</td><td><b>Agent factory script</b></td><td><span class="owner ob">B</span></td><td>2h</td><td>K1</td><td class="stat-todo">Not started</td><td><code>python make_agents.py vertical.json</code> creates/updates all 6 ElevenLabs agents (prompts, voices, tools). Idempotent.</td></tr>
-    <tr><td>K4</td><td><b>Tool webhooks ×4</b></td><td><span class="owner ob">B</span></td><td>2h</td><td>K2</td><td class="stat-todo">Not started</td><td>Endpoints live on Render; test with curl before wiring agents. <code>log_quote</code> row visible in Supabase dashboard.</td></tr>
+    <tr><td>K4</td><td><b>Tool webhooks ×4</b></td><td><span class="owner ob">B</span></td><td>2h</td><td>K2</td><td class="stat-todo">Not started</td><td>Endpoints live on Render; test with curl before wiring agents. <code>log_quote</code> row visible in Supabase dashboard. Also adds <code>update_quote</code> (K2's CRUD layer is create/get/list only).</td></tr>
     <tr><td>K5</td><td><b>Agent-to-agent audio bridge</b></td><td><span class="owner ob">B</span></td><td>3h <span class="risk-hi">⚠ timebox</span></td><td>K3</td><td class="stat-todo">Not started</td><td><code>POST /calls/start</code> {spec_id, dealer_id} → bridged call, recording saved, transcript stored, live audio relayed to browser. <b>If not working by hour 3 → role-play fallback, move on.</b></td></tr>
     <tr><td>K6</td><td><b>Doc parser</b></td><td><span class="owner oc">C</span></td><td>1.5h</td><td>K1</td><td class="stat-todo">Not started</td><td><code>POST /parse</code> (PDF/image of rent agreement or requirements doc) → partial spec JSON via OpenAI. Unknown fields null, never guessed.</td></tr>
     <tr><td>K7</td><td><b>Benchmark service</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K1</td><td class="stat-todo">Not started</td><td>Tavily query → per-sqft range, cached per spec; falls back to config values on failure/timeout (3 s).</td></tr>
     <tr><td>K8</td><td><b>Intake UI</b> (voice widget + upload + spec confirm)</td><td><span class="owner oa">A</span></td><td>3h</td><td>K1 shape only</td><td class="stat-todo">Not started</td><td>User talks to Estimator, uploads docs, reviews editable spec form, hits Confirm. Works against mock endpoints first.</td></tr>
     <tr><td>K9</td><td><b>Call Center UI</b></td><td><span class="owner oa">A</span></td><td>2.5h</td><td>K5 shape only</td><td class="stat-todo">Not started</td><td>Dealer list, Call buttons, live status, audio player, transcript stream. Also hosts role-play "Answer as dealer" mode (same widget, dealer persona).</td></tr>
     <tr><td>K10</td><td><b>Report generator + UI</b></td><td><span class="owner oc">C</span> gen · <span class="owner oa">A</span> UI</td><td>2h + 2h</td><td>K2, K4</td><td class="stat-todo">Not started</td><td>Ranked table by <code>total_first_year</code>, flags with reasons, recommended deal, plain-language why, transcript citations, recording links.</td></tr>
-    <tr><td>K11</td><td><b>Red-flag engine</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K1, K7</td><td class="stat-todo">Not started</td><td>Config-driven rules inside K4/K10. Unit-tested against the Lowballer's numbers: catches, confirms, flags, never ranks #1 silently.</td></tr>
+    <tr><td>K11</td><td><b>Red-flag engine</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K1, K7</td><td class="stat-todo">Not started</td><td>Config-driven rules inside K4/K10. Unit-tested against the Lowballer's numbers: catches, confirms, flags, never ranks #1 silently. Also adds <code>update_quote</code> for writing <code>flagged</code>/<code>flag_reason</code> (K2's CRUD layer is create/get/list only).</td></tr>
     <tr><td>K12</td><td><b>Demo assets</b></td><td><span class="owner oall">ALL</span></td><td>rolling</td><td>everything</td><td class="stat-todo">Not started</td><td>Golden call recordings, demo video, tech pitch video, 2nd vertical config, submission answers, repo zip.</td></tr>
   </table>
   <div class="call">
