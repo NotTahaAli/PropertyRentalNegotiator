@@ -34,6 +34,9 @@ class AgentDef:
     first_message: str
     llm: str
     tool_names: list[str] = field(default_factory=list)
+    # K5's bridge suppresses the dealer leg's first_message per-conversation (Negotiator
+    # opens); ElevenLabs rejects that override unless the agent explicitly allows it.
+    allow_first_message_override: bool = False
 
 
 def build_dynamic_variable_names(config: VerticalConfig) -> list[str]:
@@ -141,6 +144,7 @@ def build_agents(config: VerticalConfig) -> list[AgentDef]:
                 prompt=config.persona_prompts[persona],
                 first_message=FIRST_MESSAGES[persona],
                 llm=PERSONA_LLM,
+                allow_first_message_override=True,
             )
         )
     return agents

@@ -33,6 +33,9 @@ class FakeTable:
     def insert(self, row):
         return FakeQuery(self.name, row=row)
 
+    def update(self, row):
+        return FakeQuery(self.name, row=row)
+
     def select(self, _columns):
         return FakeQuery(self.name)
 
@@ -57,3 +60,11 @@ def test_create_and_get_and_list_roundtrip(monkeypatch):
     assert listed == [{"id": "s1", "vertical": "shop_rental"}]
 
     assert crud.get_spec("missing") is None
+
+
+def test_update_call_patches_row_by_id(monkeypatch):
+    monkeypatch.setattr(crud, "get_client", lambda: FakeClient())
+
+    updated = crud.update_call("c1", {"status": "completed", "outcome": "quote"})
+
+    assert updated == {"id": "new-id", "status": "completed", "outcome": "quote"}

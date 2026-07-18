@@ -19,6 +19,10 @@ def _list(table: str, **filters: Any) -> list[dict[str, Any]]:
     return query.execute().data
 
 
+def _update(table: str, id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    return get_client().table(table).update(fields).eq("id", id).execute().data[0]
+
+
 def create_spec(row: dict[str, Any]) -> dict[str, Any]:
     return _create("specs", row)
 
@@ -53,6 +57,10 @@ def get_call(id: str) -> dict[str, Any] | None:
 
 def list_calls(**filters: Any) -> list[dict[str, Any]]:
     return _list("calls", **filters)
+
+
+def update_call(id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    return _update("calls", id, fields)
 
 
 def create_quote(row: dict[str, Any]) -> dict[str, Any]:

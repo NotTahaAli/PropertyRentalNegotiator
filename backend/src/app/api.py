@@ -1,10 +1,18 @@
+import asyncio
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from . import crud
-from .auth import get_current_user_id
+from . import crud, live, storage
+from .auth import _decode, get_current_user_id
+from .bridge import run_bridge
+from .vertical import load_vertical
+
+AGENT_MANIFEST_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "agents.generated.json"
 
 
 class SpecCreate(BaseModel):
@@ -33,6 +41,18 @@ class CallCreate(BaseModel):
     recording_url: Optional[str] = None
     transcript_json: Optional[dict[str, Any]] = None
     outcome: Optional[str] = None
+
+
+class CallStartRequest(BaseModel):
+    spec_id: str
+    dealer_id: str
+    round: int = 1
+    mode: str = "bridge"
+
+
+class TranscriptWebhook(BaseModel):
+    transcript_json: list[dict[str, Any]]
+    outcome: str
 
 
 class QuoteCreate(BaseModel):
@@ -139,6 +159,100 @@ def list_calls(
 ) -> list[dict[str, Any]]:
     _require_spec_owner(spec_id, user_id)
     return crud.list_calls(spec_id=spec_id)
+
+
+def _agent_manifest() -> dict[str, str]:
+    return json.loads(AGENT_MANIFEST_PATH.read_text())["agents"]
+
+
+def _dynamic_variables(spec: dict[str, Any], call_id: str, dealer_id: str) -> dict[str, Any]:
+    config = load_vertical()
+    return {
+        **spec["spec_json"],
+        "currency": config.currency,
+        "call_id": call_id,
+        "dealer_id": dealer_id,
+        "spec_id": spec["id"],
+    }
+
+
+@calls_router.post("/start")
+async def start_call(
+    body: CallStartRequest, user_id: str = Depends(get_current_user_id)
+) -> dict[str, Any]:
+    spec = _require_spec_owner(body.spec_id, user_id)
+    dealer = _get_or_404(crud.get_dealer(body.dealer_id))
+    if dealer["spec_id"] != body.spec_id:
+        raise HTTPException(status_code=404, detail="not found")
+
+    call = crud.create_call(
+        {
+            "spec_id": body.spec_id,
+            "dealer_id": body.dealer_id,
+            "round": body.round,
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    call_id = call["id"]
+    agents = _agent_manifest()
+    dynamic_vars = _dynamic_variables(spec, call_id, body.dealer_id)
+
+    if body.mode == "roleplay":
+        return {
+            "call_id": call_id,
+            "negotiator_agent_id": agents["negotiator"],
+            "dynamic_variables": dynamic_vars,
+        }
+
+    asyncio.create_task(
+        run_bridge(
+            call_id,
+            body.spec_id,
+            body.dealer_id,
+            agents["negotiator"],
+            agents[dealer["persona"]],
+            dynamic_vars,
+        )
+    )
+    return {"call_id": call_id, "status": "running"}
+
+
+@calls_router.post("/{id}/transcript")
+def receive_transcript_webhook(id: str, body: TranscriptWebhook) -> dict[str, Any]:
+    # ElevenLabs post-call webhook target (role-play path) — unauthenticated by design,
+    # since a webhook carries no user JWT. Open item per K5 design doc: add a shared
+    # webhook secret once the real ElevenLabs webhook payload/headers are verified live.
+    return crud.update_call(
+        id, {"transcript_json": body.transcript_json, "outcome": body.outcome, "status": "completed"}
+    )
+
+
+@calls_router.get("/{id}/recording")
+def get_recording(id: str, user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
+    call = _require_call_owner(id, user_id)
+    return {"recording_url": storage.signed_recording_url(call["recording_url"])}
+
+
+@calls_router.websocket("/{id}/stream")
+async def stream_call(websocket: WebSocket, id: str, token: str = Query(...)) -> None:
+    try:
+        user_id = _decode(token)
+        _require_call_owner(id, user_id)
+    except HTTPException:
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    queue = live.subscribe(id)
+    try:
+        while True:
+            chunk = await queue.get()
+            await websocket.send_text(chunk)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        live.unsubscribe(id, queue)
 
 
 @quotes_router.post("")

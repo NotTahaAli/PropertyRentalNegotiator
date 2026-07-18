@@ -12,12 +12,7 @@ def _jwks_client() -> jwt.PyJWKClient:
     return jwt.PyJWKClient(url)
 
 
-def get_current_user_id(
-    authorization: Annotated[Optional[str], Header()] = None,
-) -> str:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="missing bearer token")
-    token = authorization.removeprefix("Bearer ")
+def _decode(token: str) -> str:
     try:
         signing_key = _jwks_client().get_signing_key_from_jwt(token)
         payload = jwt.decode(
@@ -32,3 +27,11 @@ def get_current_user_id(
     if not user_id:
         raise HTTPException(status_code=401, detail="token missing sub claim")
     return user_id
+
+
+def get_current_user_id(
+    authorization: Annotated[Optional[str], Header()] = None,
+) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    return _decode(authorization.removeprefix("Bearer "))

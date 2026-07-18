@@ -8,6 +8,10 @@ from app.vertical import DEFAULT_CONFIG_PATH, VerticalConfig, load_vertical
 
 DEFAULT_MANIFEST_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "agents.generated.json"
 
+# K5 bridges two agents over WS; both must speak the same PCM rate (no per-conversation
+# override exists in the API — verified against the elevenlabs SDK's override types).
+AUDIO_FORMAT = "pcm_16000"
+
 
 def _property_to_schema(prop: dict):
     from elevenlabs.types import LiteralJsonSchemaProperty
@@ -42,8 +46,34 @@ def _tool_schema_to_request(tool: dict, backend_base_url: str):
     return ToolRequestModel(tool_config=tool_config)
 
 
+def _platform_settings(agent_def):
+    if not agent_def.allow_first_message_override:
+        return None
+
+    from elevenlabs.types import (
+        AgentConfigOverrideConfig,
+        AgentPlatformSettingsRequestModel,
+        ConversationConfigClientOverrideConfigInput,
+        ConversationInitiationClientDataConfigInput,
+    )
+
+    return AgentPlatformSettingsRequestModel(
+        overrides=ConversationInitiationClientDataConfigInput(
+            conversation_config_override=ConversationConfigClientOverrideConfigInput(
+                agent=AgentConfigOverrideConfig(first_message=True)
+            )
+        )
+    )
+
+
 def _agent_def_to_conversation_config(agent_def, tool_ids: dict):
-    from elevenlabs.types import AgentConfig, ConversationalConfig, PromptAgentApiModelOutput
+    from elevenlabs.types import (
+        AgentConfig,
+        AsrConversationalConfig,
+        ConversationalConfig,
+        PromptAgentApiModelOutput,
+        TtsConversationalConfigOutput,
+    )
 
     prompt = PromptAgentApiModelOutput(
         prompt=agent_def.prompt,
@@ -51,7 +81,11 @@ def _agent_def_to_conversation_config(agent_def, tool_ids: dict):
         tool_ids=[tool_ids[name] for name in agent_def.tool_names],
     )
     agent_config = AgentConfig(first_message=agent_def.first_message, prompt=prompt)
-    return ConversationalConfig(agent=agent_config)
+    return ConversationalConfig(
+        agent=agent_config,
+        tts=TtsConversationalConfigOutput(agent_output_audio_format=AUDIO_FORMAT),
+        asr=AsrConversationalConfig(user_input_audio_format=AUDIO_FORMAT),
+    )
 
 
 def upsert_all(
@@ -74,12 +108,16 @@ def upsert_all(
     agent_ids: dict[str, str] = dict(manifest.get("agents", {}))
     for agent_def in build_agents(config):
         conversation_config = _agent_def_to_conversation_config(agent_def, tool_ids)
+        platform_settings = _platform_settings(agent_def)
+        kwargs = {"conversation_config": conversation_config, "name": agent_def.name}
+        if platform_settings is not None:
+            kwargs["platform_settings"] = platform_settings
         existing_id = agent_ids.get(agent_def.name)
         if existing_id:
-            client.conversational_ai.agents.update(existing_id, conversation_config=conversation_config, name=agent_def.name)
+            client.conversational_ai.agents.update(existing_id, **kwargs)
             agent_ids[agent_def.name] = existing_id
         else:
-            resp = client.conversational_ai.agents.create(conversation_config=conversation_config, name=agent_def.name)
+            resp = client.conversational_ai.agents.create(**kwargs)
             agent_ids[agent_def.name] = resp.agent_id
 
     return {"tools": tool_ids, "agents": agent_ids}

@@ -41,6 +41,37 @@ def test_first_run_creates_four_tools_and_six_agents():
     assert len(manifest["agents"]) == 6
 
 
+def test_agents_pinned_to_pcm_16000_audio_format():
+    config = load_vertical()
+    client = FakeClient()
+
+    upsert_all(client, config, manifest={}, backend_base_url="http://x")
+
+    assert client.conversational_ai.agents.created
+    for _agent_id, kwargs in client.conversational_ai.agents.created:
+        cc = kwargs["conversation_config"]
+        assert cc.tts.agent_output_audio_format == "pcm_16000"
+        assert cc.asr.user_input_audio_format == "pcm_16000"
+
+
+def test_persona_agents_allow_first_message_override_negotiator_and_estimator_do_not():
+    config = load_vertical()
+    client = FakeClient()
+
+    upsert_all(client, config, manifest={}, backend_base_url="http://x")
+
+    by_name = {}
+    for agent_id, kwargs in client.conversational_ai.agents.created:
+        by_name[kwargs["name"]] = kwargs
+
+    for persona in ("stonewaller", "lowballer", "upseller", "firm"):
+        settings = by_name[persona]["platform_settings"]
+        assert settings.overrides.conversation_config_override.agent.first_message is True
+
+    for other in ("negotiator", "estimator"):
+        assert by_name[other].get("platform_settings") is None
+
+
 def test_second_run_with_manifest_updates_instead_of_creating():
     config = load_vertical()
     client = FakeClient()
