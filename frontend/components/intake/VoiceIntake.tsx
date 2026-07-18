@@ -22,10 +22,21 @@ const SIMULATED_VOICE_FIELDS: Partial<
 
 interface VoiceIntakeProps {
   onField: (key: keyof JobSpec, value: unknown) => void;
-  onSkip: () => void;
+  onCallEnded: () => void;
+  onAddDocs: () => void;
 }
 
-export default function VoiceIntake({ onField, onSkip }: VoiceIntakeProps) {
+// Candidate call-end event names — the widget's real event shape is
+// unverified (see TODO.md); harmless to listen for all of them.
+const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
+
+const CALL_END_EVENTS = [
+  "elevenlabs-convai:call-ended",
+  "elevenlabs-convai:disconnect",
+  "convai-call-end",
+];
+
+export default function VoiceIntake({ onField, onCallEnded, onAddDocs }: VoiceIntakeProps) {
   const agentId = getEstimatorAgentId();
   const configured = isAgentIdConfigured();
 
@@ -35,15 +46,24 @@ export default function VoiceIntake({ onField, onSkip }: VoiceIntakeProps) {
       if (detail?.tool_name === "set_spec_field" && detail?.args?.field) {
         onField(detail.args.field as keyof JobSpec, detail.args.value);
       }
+      if (detail?.type === "call_ended" || detail?.type === "disconnect") {
+        onCallEnded();
+      }
     }
+    const handleEnd = () => onCallEnded();
     window.addEventListener("convai-message", handleConvaiMessage);
-    return () => window.removeEventListener("convai-message", handleConvaiMessage);
-  }, [onField]);
+    CALL_END_EVENTS.forEach((n) => window.addEventListener(n, handleEnd));
+    return () => {
+      window.removeEventListener("convai-message", handleConvaiMessage);
+      CALL_END_EVENTS.forEach((n) => window.removeEventListener(n, handleEnd));
+    };
+  }, [onField, onCallEnded]);
 
   function simulateVoiceCompletion() {
     for (const [key, value] of Object.entries(SIMULATED_VOICE_FIELDS)) {
       onField(key as keyof JobSpec, value);
     }
+    onCallEnded();
   }
 
   return (
@@ -58,7 +78,8 @@ export default function VoiceIntake({ onField, onSkip }: VoiceIntakeProps) {
             </h3>
             <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-text-secondary">
               Describe your requirements and the voice agent will fill in the
-              spec fields automatically.
+              spec fields automatically. When the call ends you can optionally
+              attach documents, then review everything before submitting.
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-full bg-success/10 px-3 py-1.5">
@@ -95,19 +116,21 @@ export default function VoiceIntake({ onField, onSkip }: VoiceIntakeProps) {
 
         {/* actions */}
         <div className="mt-6 flex flex-wrap gap-3">
+          {USE_MOCKS && (
+            <button
+              type="button"
+              onClick={simulateVoiceCompletion}
+              className="tr rounded-lg border border-border bg-elevated px-4 py-2 text-sm font-medium text-text hover:border-border-hover hover:bg-overlay active:scale-[0.98]"
+            >
+              Simulate voice completion
+            </button>
+          )}
           <button
             type="button"
-            onClick={simulateVoiceCompletion}
-            className="tr rounded-lg border border-border bg-elevated px-4 py-2 text-sm font-medium text-text hover:border-border-hover hover:bg-overlay active:scale-[0.98]"
-          >
-            Simulate voice completion
-          </button>
-          <button
-            type="button"
-            onClick={onSkip}
+            onClick={onAddDocs}
             className="tr rounded-lg px-4 py-2 text-sm font-medium text-text-secondary hover:text-text"
           >
-            Skip to documents →
+            Continue to documents →
           </button>
         </div>
       </div>
