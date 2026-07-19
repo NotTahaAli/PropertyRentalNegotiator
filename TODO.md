@@ -27,7 +27,18 @@ an item; delete resolved items instead of checking them off.
   location (e.g. "Gulberg Lahore"), check the Supabase row's
   `benchmark_json` has `{per_sqft_low, per_sqft_high}`, tavily dealer rows
   exist (`persona="human"`), and `POST /tools/get_benchmark` returns
-  `source: "cached"`.
+  `source: "cached"`. Same run also live-verifies the K11 discovery
+  hardening: no duplicate dealer names, no blank names, no portal/directory
+  junk (Zameen/OLX/Graana) among the inserted rows.
+
+## Blocked: K11 reflag has no UI caller
+
+- **`POST /specs/{id}/reflag` is curl-only** — endpoint is live (JWT +
+  ownership, re-runs `evaluate_red_flags` on all of a spec's quotes, may
+  unflag) but nothing in the frontend calls it. Natural caller is the K10
+  report page ("Re-check flags" before ranking) — wire a `lib/api.ts`
+  wrapper + button there when K10 exists. Until then:
+  `curl -X POST -H "Authorization: Bearer $JWT" .../specs/$SPEC_ID/reflag`.
 
 ## Blocked: K5 dealer persona doesn't verbally reply to relayed audio
 
