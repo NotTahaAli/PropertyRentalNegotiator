@@ -893,3 +893,45 @@ def test_end_call_reports_no_active_bridge(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"call_id": "c1", "stopping": False}
+
+
+def test_end_call_finalizes_orphaned_running_call(monkeypatch):
+    # backend restarted mid-call: bridge task gone, row stuck "running".
+    # /end must finalize it so the frontend poll can converge.
+    monkeypatch.setattr(
+        crud,
+        "get_call",
+        lambda id: {"id": "c1", "spec_id": "s1", "status": "running", "transcript_json": None},
+    )
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    monkeypatch.setattr(api, "request_stop", lambda call_id: False)
+    updates = []
+    monkeypatch.setattr(crud, "update_call", lambda id, fields: updates.append((id, fields)))
+    _as(USER_A)
+
+    response = client.post("/calls/c1/end")
+
+    assert response.status_code == 200
+    assert response.json() == {"call_id": "c1", "stopping": False}
+    assert len(updates) == 1
+    call_id, fields = updates[0]
+    assert call_id == "c1"
+    assert fields["status"] == "completed"
+    assert fields["outcome"] == "callback"
+    assert fields["ended_at"]
+
+
+def test_end_call_leaves_completed_call_alone(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1", "status": "completed"}
+    )
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    monkeypatch.setattr(api, "request_stop", lambda call_id: False)
+    updates = []
+    monkeypatch.setattr(crud, "update_call", lambda id, fields: updates.append((id, fields)))
+    _as(USER_A)
+
+    response = client.post("/calls/c1/end")
+
+    assert response.status_code == 200
+    assert updates == []

@@ -305,10 +305,21 @@ async def start_call(
 
 @calls_router.post("/{id}/end")
 def end_call(id: str, user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
-    _require_call_owner(id, user_id)
-    # stopping=False: bridge already over (or roleplay — ended client-side);
-    # the caller's status poll converges either way.
-    return {"call_id": id, "stopping": request_stop(id)}
+    call = _require_call_owner(id, user_id)
+    stopping = request_stop(id)
+    # No live bridge but the row still says "running" — the backend restarted
+    # mid-call and the bridge's finalize never ran. Finalize here so the
+    # frontend poll converges instead of showing LIVE forever.
+    if not stopping and call.get("status") == "running":
+        crud.update_call(
+            id,
+            {
+                "status": "completed",
+                "ended_at": datetime.now(timezone.utc).isoformat(),
+                "outcome": derive_outcome(call.get("transcript_json") or []),
+            },
+        )
+    return {"call_id": id, "stopping": stopping}
 
 
 @webhooks_router.post("/post-call")

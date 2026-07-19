@@ -132,9 +132,18 @@ export function useCallCenter(specId: string) {
   // the human ends the voice session) — same backend statuses either way.
   const pollUntilDone = useCallback(
     (dealerId: string, callId: string) => {
+      let inFlight = false; // slow backend: don't stack overlapping polls
       const poll = setInterval(async () => {
+        if (inFlight) return;
+        inFlight = true;
         try {
           const call = await getCall(callId);
+          // poll recovered — drop a stale "retrying" banner (no-op render otherwise)
+          setCalls((prev) =>
+            prev[dealerId]?.error
+              ? { ...prev, [dealerId]: { ...prev[dealerId], error: undefined } }
+              : prev
+          );
           if (call.status === "running") {
             // live quote: log_quote writes the row mid-call, so surface it as
             // soon as it lands instead of waiting for the call to complete
@@ -154,12 +163,13 @@ export function useCallCenter(specId: string) {
             });
             return;
           }
-          // completed — transcript arrives whole; fetch quote + recording
-          let quote: Quote | null = null;
+          // completed — transcript arrives whole; fetch quote + recording.
+          // quote undefined = fetch failed: keep whatever the live poll already
+          // surfaced instead of clobbering it with null.
+          let quote: Quote | null | undefined;
           let recordingUrl: string | null = null;
           try {
-            const quotes = await listQuotes(callId);
-            quote = quotes[0] ?? null;
+            quote = (await listQuotes(callId))[0] ?? null;
           } catch {}
           try {
             recordingUrl = await getRecordingUrl(callId);
@@ -168,12 +178,14 @@ export function useCallCenter(specId: string) {
             state: "done",
             transcript: call.transcript_json ?? [],
             outcome: call.outcome ?? "callback",
-            quote,
+            ...(quote !== undefined ? { quote } : {}),
             recordingUrl,
           });
         } catch {
           // transient poll error — keep polling; surface soft error
           patch(dealerId, { error: "Status check failed — retrying..." });
+        } finally {
+          inFlight = false;
         }
       }, POLL_MS);
       addTimer(dealerId, poll);
