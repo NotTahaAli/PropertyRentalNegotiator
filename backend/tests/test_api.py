@@ -1,4 +1,7 @@
+import hashlib
+import hmac
 import json
+import time
 
 from fastapi.testclient import TestClient
 
@@ -38,6 +41,7 @@ def test_create_spec_sets_owner_from_token(monkeypatch):
         return {"id": "s1", **row}
 
     monkeypatch.setattr(crud, "create_spec", fake_create_spec)
+    monkeypatch.setattr(crud, "create_dealer", lambda row: {"id": "d", **row})
     _as(USER_A)
 
     response = client.post(
@@ -47,6 +51,31 @@ def test_create_spec_sets_owner_from_token(monkeypatch):
 
     assert response.status_code == 200
     assert captured["user_id"] == USER_A
+
+
+def test_create_spec_seeds_one_dealer_per_persona(monkeypatch):
+    seeded = []
+
+    monkeypatch.setattr(crud, "create_spec", lambda row: {"id": "s1", **row})
+
+    def fake_create_dealer(row):
+        seeded.append(row)
+        return {"id": f"d{len(seeded)}", **row}
+
+    monkeypatch.setattr(crud, "create_dealer", fake_create_dealer)
+    _as(USER_A)
+
+    response = client.post(
+        "/specs",
+        json={"vertical": "shop_rental", "status": "confirmed", "spec_json": {}},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["dealers_seeded"] == len(seeded) > 0
+    personas = [d["persona"] for d in seeded]
+    assert len(set(personas)) == len(personas)
+    assert all(d["spec_id"] == "s1" for d in seeded)
 
 
 def test_list_specs_scoped_to_caller(monkeypatch):
@@ -421,7 +450,31 @@ def test_start_call_roleplay_returns_agent_and_dynamic_variables_with_no_bid_dat
     assert spawned == []
 
 
-def test_roleplay_transcript_webhook_writes_call(monkeypatch):
+WEBHOOK_SECRET = "test-webhook-secret"
+
+POSTCALL_EVENT = {
+    "type": "post_call_transcription",
+    "data": {
+        "conversation_initiation_client_data": {
+            "dynamic_variables": {"call_id": "c1"}
+        },
+        "transcript": [
+            {"role": "agent", "message": "What is the rent?"},
+            {"role": "user", "message": "Rent is 150000 monthly."},
+            {"role": "user", "message": None},
+        ],
+    },
+}
+
+
+def _signed_headers(body: str, secret: str = WEBHOOK_SECRET) -> dict:
+    t = str(int(time.time()))
+    v0 = hmac.new(secret.encode(), f"{t}.{body}".encode(), hashlib.sha256).hexdigest()
+    return {"elevenlabs-signature": f"t={t},v0={v0}"}
+
+
+def test_post_call_webhook_valid_signature_writes_call(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_WEBHOOK_SECRET", WEBHOOK_SECRET)
     updates = []
 
     def fake_update_call(id, fields):
@@ -430,25 +483,65 @@ def test_roleplay_transcript_webhook_writes_call(monkeypatch):
 
     monkeypatch.setattr(crud, "update_call", fake_update_call)
 
+    body = json.dumps(POSTCALL_EVENT)
     response = client.post(
-        "/calls/c1/transcript",
-        json={
-            "transcript_json": [{"line": 1, "speaker": "negotiator", "text": "hi"}],
-            "outcome": "quote",
-        },
+        "/webhooks/post-call", content=body, headers=_signed_headers(body)
     )
 
     assert response.status_code == 200
-    assert updates == [
-        (
-            "c1",
-            {
-                "transcript_json": [{"line": 1, "speaker": "negotiator", "text": "hi"}],
-                "outcome": "quote",
-                "status": "completed",
-            },
-        )
+    assert len(updates) == 1
+    call_id, fields = updates[0]
+    assert call_id == "c1"
+    assert fields["status"] == "completed"
+    assert fields["transcript_json"] == [
+        {"line": 1, "speaker": "negotiator", "text": "What is the rent?"},
+        {"line": 2, "speaker": "dealer", "text": "Rent is 150000 monthly."},
     ]
+    assert fields["outcome"] == "quote"
+
+
+def test_post_call_webhook_bad_signature_401(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_WEBHOOK_SECRET", WEBHOOK_SECRET)
+    monkeypatch.setattr(
+        crud, "update_call", lambda id, fields: (_ for _ in ()).throw(AssertionError)
+    )
+
+    body = json.dumps(POSTCALL_EVENT)
+    response = client.post(
+        "/webhooks/post-call",
+        content=body,
+        headers=_signed_headers(body, secret="wrong-secret"),
+    )
+
+    assert response.status_code == 401
+
+
+def test_post_call_webhook_fails_closed_without_secret_env(monkeypatch):
+    monkeypatch.delenv("ELEVENLABS_WEBHOOK_SECRET", raising=False)
+
+    body = json.dumps(POSTCALL_EVENT)
+    response = client.post(
+        "/webhooks/post-call", content=body, headers=_signed_headers(body)
+    )
+
+    assert response.status_code == 401
+
+
+def test_post_call_webhook_acks_events_without_call_id(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_WEBHOOK_SECRET", WEBHOOK_SECRET)
+    updates = []
+    monkeypatch.setattr(
+        crud, "update_call", lambda id, fields: updates.append(id)
+    )
+
+    body = json.dumps({"type": "post_call_transcription", "data": {"transcript": []}})
+    response = client.post(
+        "/webhooks/post-call", content=body, headers=_signed_headers(body)
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ignored"}
+    assert updates == []
 
 
 def test_recording_endpoint_owner_only(monkeypatch):

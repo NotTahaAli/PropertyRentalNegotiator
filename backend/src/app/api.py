@@ -1,15 +1,27 @@
 import asyncio
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from elevenlabs.client import ElevenLabs
+from elevenlabs.errors import BadRequestError
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from pydantic import BaseModel
 
 from . import crud, live, storage
 from .auth import _decode, get_current_user_id
-from .bridge import run_bridge
+from .bridge import derive_outcome, run_bridge
+from .seed import seed_dealers
 from .vertical import load_vertical
 
 AGENT_MANIFEST_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "agents.generated.json"
@@ -48,11 +60,6 @@ class CallStartRequest(BaseModel):
     dealer_id: str
     round: int = 1
     mode: str = "bridge"
-
-
-class TranscriptWebhook(BaseModel):
-    transcript_json: list[dict[str, Any]]
-    outcome: str
 
 
 class QuoteCreate(BaseModel):
@@ -104,13 +111,16 @@ specs_router = APIRouter(prefix="/specs", tags=["specs"])
 dealers_router = APIRouter(prefix="/dealers", tags=["dealers"])
 calls_router = APIRouter(prefix="/calls", tags=["calls"])
 quotes_router = APIRouter(prefix="/quotes", tags=["quotes"])
+webhooks_router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
 @specs_router.post("")
 def create_spec(
     body: SpecCreate, user_id: str = Depends(get_current_user_id)
 ) -> dict[str, Any]:
-    return crud.create_spec({**body.model_dump(), "user_id": user_id})
+    spec = crud.create_spec({**body.model_dump(), "user_id": user_id})
+    dealers = seed_dealers(spec["id"])
+    return {**spec, "dealers_seeded": len(dealers)}
 
 
 @specs_router.get("/{id}")
@@ -228,14 +238,48 @@ async def start_call(
     return {"call_id": call_id, "status": "running"}
 
 
-@calls_router.post("/{id}/transcript")
-def receive_transcript_webhook(id: str, body: TranscriptWebhook) -> dict[str, Any]:
-    # ElevenLabs post-call webhook target (role-play path) — unauthenticated by design,
-    # since a webhook carries no user JWT. Open item per K5 design doc: add a shared
-    # webhook secret once the real ElevenLabs webhook payload/headers are verified live.
-    return crud.update_call(
-        id, {"transcript_json": body.transcript_json, "outcome": body.outcome, "status": "completed"}
+@webhooks_router.post("/post-call")
+async def post_call_webhook(request: Request) -> dict[str, Any]:
+    raw_body = (await request.body()).decode("utf-8")
+    signature = request.headers.get("elevenlabs-signature", "")
+    try:
+        # Fail-closed: with ELEVENLABS_WEBHOOK_SECRET unset, construct_event rejects.
+        event = ElevenLabs(api_key="webhook-verify-only").webhooks.construct_event(
+            rawBody=raw_body,
+            sig_header=signature,
+            secret=os.environ.get("ELEVENLABS_WEBHOOK_SECRET", ""),
+        )
+    except BadRequestError:
+        raise HTTPException(status_code=401, detail="bad webhook signature")
+
+    if event.get("type") != "post_call_transcription":
+        return {"status": "ignored"}
+    data = event.get("data") or {}
+    init_data = data.get("conversation_initiation_client_data") or {}
+    call_id = (init_data.get("dynamic_variables") or {}).get("call_id")
+    if not call_id:
+        # Ack conversations we didn't start so ElevenLabs doesn't retry-hammer.
+        return {"status": "ignored"}
+
+    transcript = [
+        {
+            "line": line,
+            "speaker": "negotiator" if turn["role"] == "agent" else "dealer",
+            "text": turn["message"],
+        }
+        for line, turn in enumerate(
+            (t for t in data.get("transcript") or [] if t.get("message")), start=1
+        )
+    ]
+    crud.update_call(
+        call_id,
+        {
+            "transcript_json": transcript,
+            "outcome": derive_outcome(transcript),
+            "status": "completed",
+        },
     )
+    return {"status": "ok"}
 
 
 @calls_router.get("/{id}/recording")

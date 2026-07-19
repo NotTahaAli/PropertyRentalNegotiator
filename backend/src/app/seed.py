@@ -17,6 +17,22 @@ SAMPLE_SPEC_JSON = {
 }
 
 
+def seed_dealers(spec_id: str) -> list[dict]:
+    config = load_vertical()
+    return [
+        crud.create_dealer(
+            {
+                "spec_id": spec_id,
+                "name": f"{persona.capitalize()} Dealer",
+                "persona": persona,
+                "phone_label": f"Dealer ({persona})",
+                "source": "seed",
+            }
+        )
+        for persona in config.persona_prompts
+    ]
+
+
 def seed(user_id: str) -> None:
     config = load_vertical()
 
@@ -31,17 +47,8 @@ def seed(user_id: str) -> None:
     )
     print(f"seeded spec {spec['id']}")
 
-    for persona in config.persona_prompts:
-        dealer = crud.create_dealer(
-            {
-                "spec_id": spec["id"],
-                "name": f"{persona.capitalize()} Dealer",
-                "persona": persona,
-                "phone_label": f"Dealer ({persona})",
-                "source": "seed",
-            }
-        )
-        print(f"seeded dealer {dealer['id']} ({persona})")
+    for dealer in seed_dealers(spec["id"]):
+        print(f"seeded dealer {dealer['id']} ({dealer['persona']})")
 
 
 if __name__ == "__main__":

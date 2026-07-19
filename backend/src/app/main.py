@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import calls_router, dealers_router, quotes_router, specs_router
+from .api import calls_router, dealers_router, quotes_router, specs_router, webhooks_router
 from .parse import parse_router
 from .tools import tools_router
 
@@ -23,6 +23,7 @@ app.include_router(dealers_router)
 app.include_router(calls_router)
 app.include_router(quotes_router)
 app.include_router(tools_router)
+app.include_router(webhooks_router)
 
 
 @app.get("/health")

@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
-import Script from "next/script";
+import { useCallback, useState } from "react";
+import { ConversationProvider, useConversation } from "@elevenlabs/react";
+import Button from "@/components/ui/Button";
 import OnAirDot from "@/components/ui/OnAirDot";
-import { CONVAI_SCRIPT_SRC, getEstimatorAgentId, isAgentIdConfigured } from "@/lib/elevenlabs";
+import { getEstimatorAgentId, isAgentIdConfigured } from "@/lib/elevenlabs";
 import type { JobSpec } from "@/lib/types";
 
-// Canned fields for the "simulate" fallback — enough to demo the flow
-// when the Estimator agent's tool-call shape isn't wired up yet (K3).
+// Canned fields for the "simulate" fallback — demo without spending credits.
 const SIMULATED_VOICE_FIELDS: Partial<
   Record<Exclude<keyof JobSpec, "_source" | "id" | "vertical" | "currency">, unknown>
 > = {
@@ -26,38 +26,48 @@ interface VoiceIntakeProps {
   onAddDocs: () => void;
 }
 
-// Candidate call-end event names — the widget's real event shape is
-// unverified (see TODO.md); harmless to listen for all of them.
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
-const CALL_END_EVENTS = [
-  "elevenlabs-convai:call-ended",
-  "elevenlabs-convai:disconnect",
-  "convai-call-end",
-];
+export default function VoiceIntake(props: VoiceIntakeProps) {
+  return (
+    <ConversationProvider
+      agentId={getEstimatorAgentId()}
+      clientTools={{
+        // Estimator agent tool: any subset of spec fields, typed by the tool schema.
+        set_spec_field: (params: Record<string, unknown>) => {
+          for (const [key, value] of Object.entries(params)) {
+            props.onField(key as keyof JobSpec, value);
+          }
+          return "recorded";
+        },
+      }}
+      onDisconnect={props.onCallEnded}
+    >
+      <VoiceIntakeInner {...props} />
+    </ConversationProvider>
+  );
+}
 
-export default function VoiceIntake({ onField, onCallEnded, onAddDocs }: VoiceIntakeProps) {
-  const agentId = getEstimatorAgentId();
+function VoiceIntakeInner({ onField, onCallEnded, onAddDocs }: VoiceIntakeProps) {
   const configured = isAgentIdConfigured();
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    function handleConvaiMessage(e: Event) {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.tool_name === "set_spec_field" && detail?.args?.field) {
-        onField(detail.args.field as keyof JobSpec, detail.args.value);
-      }
-      if (detail?.type === "call_ended" || detail?.type === "disconnect") {
-        onCallEnded();
-      }
+  const { startSession, endSession, status, isSpeaking } = useConversation({
+    onError: () =>
+      setError("Voice connection failed. You can continue with documents instead."),
+  });
+
+  const startInterview = useCallback(async () => {
+    setError(null);
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      startSession();
+    } catch {
+      setError("Microphone unavailable. You can continue with documents instead.");
     }
-    const handleEnd = () => onCallEnded();
-    window.addEventListener("convai-message", handleConvaiMessage);
-    CALL_END_EVENTS.forEach((n) => window.addEventListener(n, handleEnd));
-    return () => {
-      window.removeEventListener("convai-message", handleConvaiMessage);
-      CALL_END_EVENTS.forEach((n) => window.removeEventListener(n, handleEnd));
-    };
-  }, [onField, onCallEnded]);
+  }, [startSession]);
+
+  const connected = status === "connected";
 
   function simulateVoiceCompletion() {
     for (const [key, value] of Object.entries(SIMULATED_VOICE_FIELDS)) {
@@ -82,28 +92,29 @@ export default function VoiceIntake({ onField, onCallEnded, onAddDocs }: VoiceIn
               attach documents, then review everything before submitting.
             </p>
           </div>
-          <div className="flex items-center gap-2 rounded-full bg-success/10 px-3 py-1.5">
-            <OnAirDot />
-            <span className="text-xs font-medium text-success">Live</span>
-          </div>
+          {connected && (
+            <div className="flex items-center gap-2 rounded-full bg-success/10 px-3 py-1.5">
+              <OnAirDot />
+              <span className="text-xs font-medium text-success">
+                {isSpeaking ? "Estimator speaking" : "Listening..."}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* agent embed or placeholder */}
+        {/* call controls or placeholder */}
         {configured ? (
-          <div className="mt-6">
-            <Script src={CONVAI_SCRIPT_SRC} strategy="afterInteractive" />
-            {/* Panel colors/placement live in the ElevenLabs dashboard widget
-                settings (Owner B); only orb colors + texts are embed-side. */}
-            <elevenlabs-convai
-              agent-id={agentId}
-              avatar-orb-color-1="#CFA44E"
-              avatar-orb-color-2="#1A1A1F"
-              action-text="Talk to the estimator"
-              start-call-text="Start interview"
-              end-call-text="End interview"
-              listening-text="Listening..."
-              speaking-text="Estimator speaking"
-            />
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            {connected ? (
+              <Button variant="secondary" onClick={() => endSession()}>
+                End interview
+              </Button>
+            ) : (
+              <Button onClick={startInterview} disabled={status === "connecting"}>
+                {status === "connecting" ? "Connecting..." : "Start interview"}
+              </Button>
+            )}
+            {error && <p className="text-sm text-text-dim">{error}</p>}
           </div>
         ) : (
           <div className="mt-6 rounded-lg border border-dashed border-border-hover bg-elevated p-5">
@@ -136,25 +147,4 @@ export default function VoiceIntake({ onField, onCallEnded, onAddDocs }: VoiceIn
       </div>
     </div>
   );
-}
-
-declare module "react" {
-  // eslint-disable-next-line @typescript-eslint/no-namespace -- required to augment React's JSX.IntrinsicElements
-  namespace JSX {
-    interface IntrinsicElements {
-      "elevenlabs-convai": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & {
-          "agent-id"?: string;
-          "avatar-orb-color-1"?: string;
-          "avatar-orb-color-2"?: string;
-          "action-text"?: string;
-          "start-call-text"?: string;
-          "end-call-text"?: string;
-          "listening-text"?: string;
-          "speaking-text"?: string;
-        },
-        HTMLElement
-      >;
-    }
-  }
 }

@@ -1,5 +1,6 @@
 from app.agent_factory import (
     build_agents,
+    build_client_tool_schemas,
     build_dynamic_variable_names,
     build_negotiator_prompt,
     build_tool_schemas,
@@ -86,8 +87,35 @@ def test_build_agents_returns_six_agents_only_negotiator_has_tools():
         "check_redflag",
         "get_benchmark",
     ]
-    for persona in ("estimator", "stonewaller", "lowballer", "upseller", "firm"):
+    for persona in ("stonewaller", "lowballer", "upseller", "firm"):
         assert by_name[persona].tool_names == []
+
+
+def test_set_spec_field_client_tool_covers_every_spec_field_typed():
+    config = load_vertical()
+    tools = build_client_tool_schemas(config)
+    assert [t["name"] for t in tools] == ["set_spec_field"]
+    tool = tools[0]
+    assert tool["type"] == "client"
+    assert tool["expects_response"] is False
+    props = tool["parameters"]["properties"]
+    assert set(props.keys()) == set(config.spec_schema.keys())
+    assert tool["parameters"]["required"] == []
+    assert props["area_sqft"]["type"] == "number"
+    assert props["parking"]["type"] == "boolean"
+    assert props["floor"]["type"] == "string"
+    for value in config.spec_schema["floor"].values:
+        assert value in props["floor"]["description"]
+    assert "YYYY-MM-DD" in props["move_in"]["description"]
+
+
+def test_estimator_gets_set_spec_field_and_end_call():
+    config = load_vertical()
+    by_name = {a.name: a for a in build_agents(config)}
+    assert by_name["estimator"].tool_names == ["set_spec_field"]
+    assert by_name["estimator"].end_call is True
+    for other in ("negotiator", "stonewaller", "lowballer", "upseller", "firm"):
+        assert by_name[other].end_call is False
 
 
 def test_build_agents_uses_configured_llm_split():
