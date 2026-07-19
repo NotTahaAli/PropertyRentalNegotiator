@@ -355,11 +355,16 @@ def test_list_quotes_scoped_to_owned_call(monkeypatch):
     assert response.json() == [{"id": "q1"}]
 
 
+class _FakeTask:
+    def add_done_callback(self, cb):
+        pass
+
+
 def _fake_create_task_recording(spawned):
     def fake(coro):
         coro.close()
         spawned.append(coro)
-        return None
+        return _FakeTask()
 
     return fake
 

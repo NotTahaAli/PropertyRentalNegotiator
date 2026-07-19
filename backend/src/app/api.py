@@ -245,6 +245,10 @@ def _agent_manifest() -> dict[str, str]:
     return json.loads(AGENT_MANIFEST_PATH.read_text())["agents"]
 
 
+# strong references to running bridge tasks — see start_call
+_bridge_tasks: set[asyncio.Task] = set()
+
+
 def _dynamic_variables(spec: dict[str, Any], call_id: str, dealer_id: str) -> dict[str, Any]:
     config = load_vertical()
     return {
@@ -290,7 +294,9 @@ async def start_call(
             "dynamic_variables": dynamic_vars,
         }
 
-    asyncio.create_task(
+    # keep a strong reference: a bare create_task can be garbage-collected
+    # mid-run, killing the bridge without its finalize (row stuck "running")
+    task = asyncio.create_task(
         run_bridge(
             call_id,
             body.spec_id,
@@ -300,6 +306,8 @@ async def start_call(
             dynamic_vars,
         )
     )
+    _bridge_tasks.add(task)
+    task.add_done_callback(_bridge_tasks.discard)
     return {"call_id": call_id, "status": "running"}
 
 
