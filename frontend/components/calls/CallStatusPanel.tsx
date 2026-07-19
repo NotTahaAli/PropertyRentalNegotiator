@@ -4,14 +4,11 @@ import { useEffect, useState } from "react";
 import AudioPlayer from "./AudioPlayer";
 import CharacterCard from "./CharacterCard";
 import LiveAudio from "./LiveAudio";
-import QuoteChip from "./QuoteChip";
 import RoleplaySession from "./RoleplaySession";
 import StateBadge from "./StateBadge";
 import TranscriptStream from "./TranscriptStream";
 import type { Dealer, TranscriptLine } from "@/lib/types";
 import type { DealerCallState } from "@/lib/useCallCenter";
-
-const MAX_CALL_SECONDS = 180; // backend bridge hard cap
 
 function formatElapsed(s: number): string {
   const m = Math.floor(s / 60);
@@ -29,15 +26,10 @@ function ElapsedTicker({ startedAt, live }: { startedAt?: number; live: boolean 
 
   if (!startedAt) return null;
   const elapsed = Math.floor((now - startedAt) / 1000);
-  const capped = Math.min(elapsed, MAX_CALL_SECONDS);
-  const stale = live && elapsed > MAX_CALL_SECONDS;
 
   return (
     <span className="font-mono text-xs tabular-nums text-text-secondary">
-      {formatElapsed(capped)}
-      {stale && (
-        <span className="ml-2 text-error">call timed out? backend caps at 3:00</span>
-      )}
+      {formatElapsed(elapsed)}
     </span>
   );
 }
@@ -179,12 +171,10 @@ export default function CallStatusPanel({
         )}
       </div>
 
-      {/* completed extras */}
+      {/* completed extras — the quote itself lives in the page's quote panel */}
       {state === "done" && (
         <div className="mt-5 flex flex-col gap-4 border-t border-border pt-4">
-          {outcome === "quote" && quote ? (
-            <QuoteChip quote={quote} />
-          ) : (
+          {!(outcome === "quote" && quote) && (
             <div
               className={`rounded-lg px-3.5 py-2.5 text-sm ${
                 (OUTCOME_LABELS[outcome ?? "callback"] ?? OUTCOME_LABELS.callback).className

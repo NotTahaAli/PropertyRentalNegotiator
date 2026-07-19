@@ -11,12 +11,17 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function QuoteChip({ quote }: { quote: Quote }) {
+export default function QuoteChip({ quote, live = false }: { quote: Quote; live?: boolean }) {
   return (
     <div className="rounded-lg border border-border bg-elevated p-4">
       <div className="flex items-center justify-between">
         <p className="font-display text-sm font-semibold text-text">Logged quote</p>
         <div className="flex gap-1.5">
+          {live && (
+            <span className="rec-pulse rounded-md bg-accent-dim px-2 py-0.5 font-mono text-[10px] text-accent">
+              live
+            </span>
+          )}
           {quote.binding && (
             <span className="rounded-md bg-success-dim px-2 py-0.5 font-mono text-[10px] text-success">
               written

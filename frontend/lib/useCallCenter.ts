@@ -135,7 +135,15 @@ export function useCallCenter(specId: string) {
       const poll = setInterval(async () => {
         try {
           const call = await getCall(callId);
-          if (call.status === "running") return;
+          if (call.status === "running") {
+            // live quote: log_quote writes the row mid-call, so surface it as
+            // soon as it lands instead of waiting for the call to complete
+            try {
+              const q = (await listQuotes(callId))[0];
+              if (q) patch(dealerId, { quote: q });
+            } catch {}
+            return;
+          }
           clearTimers(dealerId);
           if (call.status === "failed") {
             patch(dealerId, {

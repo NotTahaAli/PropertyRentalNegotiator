@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DealerCard from "@/components/calls/DealerCard";
 import CallStatusPanel from "@/components/calls/CallStatusPanel";
+import QuoteChip from "@/components/calls/QuoteChip";
 import { MOCK_DEALERS, MOCK_REPORT } from "@/lib/mocks";
 import { useCallCenter } from "@/lib/useCallCenter";
 
@@ -116,7 +117,7 @@ export default function CallCenterPage() {
       {/* main grid */}
       {dealers && dealers.length > 0 && (
         <div className="flex flex-col gap-6 lg:flex-row">
-          <div className="flex flex-col gap-3 lg:w-[38%]">
+          <div className="flex flex-col gap-3 lg:w-[30%]">
             {dealers.map((d) => (
               <DealerCard
                 key={d.id}
@@ -140,6 +141,23 @@ export default function CallCenterPage() {
               onHangUp={() => selectedDealer && hangUp(selectedDealer.id)}
               highlightLine={highlightLine}
             />
+          </div>
+          {/* live quote panel — fills as soon as log_quote writes the row mid-call */}
+          <div className="lg:sticky lg:top-8 lg:w-[26%] lg:self-start">
+            {(() => {
+              const s = selectedDealer ? stateFor(selectedDealer.id) : null;
+              if (s?.quote) return <QuoteChip quote={s.quote} live={s.state === "live"} />;
+              return (
+                <div className="rounded-xl border border-dashed border-border-hover bg-surface p-5">
+                  <p className="font-display text-sm font-semibold text-text">Quote</p>
+                  <p className="mt-2 text-sm text-text-dim">
+                    {s?.state === "live" || s?.state === "calling"
+                      ? "No quote logged yet — it appears here the moment the Negotiator logs one."
+                      : "No quote for this dealer yet."}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

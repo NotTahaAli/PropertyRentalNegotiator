@@ -21,7 +21,6 @@ AUDIO_FORMAT = "pcm_16000"
 SAMPLE_RATE = 16000
 SAMPLE_WIDTH = 2  # bytes per 16-bit PCM sample
 
-MAX_CALL_SECONDS = 180
 SILENCE_SECONDS = 15
 
 # Half-duplex turn-taking: a leg holds the floor while its TTS chunks keep
@@ -296,9 +295,9 @@ async def run_bridge(
                 # user hit "End call": first completed task wins, normal finalize
                 asyncio.ensure_future(stop_event.wait()),
             }
-            done, pending = await asyncio.wait(
-                tasks, timeout=MAX_CALL_SECONDS, return_when=asyncio.FIRST_COMPLETED
-            )
+            # no wall-clock cap: calls end naturally, on manual stop, or via
+            # the silence watchdog when a leg dies
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
             await asyncio.gather(*pending, return_exceptions=True)

@@ -671,8 +671,10 @@ def test_dealer_init_keeps_factory_first_message():
     assert "conversation_config_override" not in msg
 
 
-def test_run_bridge_respects_max_duration(monkeypatch):
-    monkeypatch.setattr(bridge, "MAX_CALL_SECONDS", 0.05)
+def test_run_bridge_has_no_time_cap_but_silence_watchdog_still_ends_it(monkeypatch):
+    # The 3:00 hard cap was removed — a hung call must still terminate via the
+    # silence watchdog (no audio ever flows from a hanging websocket).
+    monkeypatch.setattr(bridge, "SILENCE_SECONDS", 0.05)
     neg_ws = _HangingWebSocket()
     deal_ws = _HangingWebSocket()
     monkeypatch.setattr(
