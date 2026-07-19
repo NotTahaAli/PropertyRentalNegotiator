@@ -17,33 +17,31 @@ an item; delete resolved items instead of checking them off.
   the demo must never depend on the bridge working, so this gap still
   matters even now that the bridge persona-reply bug is fixed.
 
-- **`make_agents` re-run needed for K4/K7 prompt+schema changes** —
-  `log_quote` now requires `binding` in its tool schema, and the negotiator
-  prompt gained the always-ask-for-a-written-quote instruction plus friction
-  handling (interruptions, vague answers, callback commitments). Deployed
-  ElevenLabs agents/tools still carry the old config until
-  `uv run python -m app.make_agents` is re-run with live keys.
-
-- **Post-call webhook dashboard wiring** — backend endpoint
-  `POST /webhooks/post-call` is built and HMAC-verified (fail-closed on env
-  `ELEVENLABS_WEBHOOK_SECRET`; extracts `call_id` from the conversation's
-  dynamic variables, maps the transcript, derives outcome). Remaining steps
-  are dashboard-side: create the post-call webhook in the ElevenLabs
-  dashboard pointing at
-  `https://negotiator-backend.onrender.com/webhooks/post-call`, then set the
-  generated secret as `ELEVENLABS_WEBHOOK_SECRET` locally and on Render.
+- **Post-call webhook: live delivery unverified** — backend endpoint
+  `POST /webhooks/post-call` is built and HMAC-verified;
+  `ELEVENLABS_WEBHOOK_SECRET` is now set locally (presence-checked
+  2026-07-19) and the dashboard webhook exists. Still to confirm: the same
+  secret is set on Render, and one real agent call actually lands a signed
+  event at `https://negotiator-backend.onrender.com/webhooks/post-call`
+  (transcript + outcome written to the `calls` row).
 
 ## Blocked: K7 live verification
 
-- **`TAVILY_API_KEY` not set anywhere** — K7 benchmark fetch + dealer
-  discovery fail soft (null benchmark, no discovered dealers) until the key
-  is set locally and on Render. Then live-verify: `POST /specs` with a real
-  location (e.g. "Gulberg Lahore"), check the Supabase row's
-  `benchmark_json` has `{per_sqft_low, per_sqft_high}`, tavily dealer rows
-  exist (`persona="human"`), and `POST /tools/get_benchmark` returns
-  `source: "cached"`. Same run also live-verifies the K11 discovery
-  hardening: no duplicate dealer names, no blank names, no portal/directory
-  junk (Zameen/OLX/Graana) among the inserted rows.
+- **`TAVILY_API_KEY` not live anywhere reachable** — key was reportedly
+  added on Render, but a 2026-07-19 live probe against the deployed backend
+  (two `POST /specs` runs, location "Gulberg Lahore", confirmed test user
+  `k7-live-verify@gmail.com`) got `benchmark_json: null`,
+  `dealers_discovered: 0`, and `get_benchmark` `source: "fallback"` both
+  times — Tavily is silently failing server-side (missing/typo'd env var or
+  service not redeployed after the env change; `fetch_benchmark` swallows
+  all errors by design). Key is also absent from local `backend/.env`
+  (presence-checked, not read). Fix: re-check the Render env var name +
+  trigger a redeploy, and add the key locally, then re-run the probe:
+  `POST /specs` should return populated `benchmark_json`
+  `{per_sqft_low, per_sqft_high}`, tavily dealer rows (`persona="human"`),
+  and `POST /tools/get_benchmark` `source: "cached"`. Same run also
+  live-verifies the K11 discovery hardening: no duplicate dealer names, no
+  blank names, no portal/directory junk (Zameen/OLX/Graana).
 
 ## Blocked: K11 reflag has no UI caller
 
@@ -72,6 +70,10 @@ an item; delete resolved items instead of checking them off.
 
 ## Resolved
 
+- `make_agents` re-run for K4/K7 prompt+schema changes (`binding` required
+  in `log_quote` schema, written-quote + friction-handling prompt updates):
+  user re-ran `uv run python -m app.make_agents` with live keys 2026-07-19;
+  deployed agents/tools now carry current config.
 - K5 dealer-persona-never-replies bug: root cause was missing trailing
   silence. ElevenLabs' server-side turn detection only commits a user turn
   after it hears silence *audio* following speech; the bridge relayed TTS
