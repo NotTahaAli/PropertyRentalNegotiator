@@ -2,6 +2,7 @@ import asyncio
 import base64
 import io
 import json
+import random
 import re
 import time
 import wave
@@ -22,6 +23,14 @@ SAMPLE_WIDTH = 2  # bytes per 16-bit PCM sample
 
 MAX_CALL_SECONDS = 180
 SILENCE_SECONDS = 15
+
+# Half-duplex turn-taking: a leg holds the floor while its TTS chunks keep
+# arriving, and releases it after this gap with no new chunk (TTS arrives in
+# faster-than-realtime bursts, so intra-utterance gaps are tiny). A leg that
+# tried to speak while the other held the floor waits a random human-ish
+# backoff after the floor frees, then re-checks it's still free before talking.
+TURN_GAP_SECONDS = 0.6
+BACKOFF_RANGE_SECONDS = (0.25, 0.5)
 
 # ElevenLabs' server-side turn detection only commits a user turn after it hears
 # silence *audio* following speech — a relay that forwards TTS bursts and then
@@ -110,18 +119,64 @@ class CallSink:
         self.pcm[leg] += chunk
 
 
-async def relay_loop(src_ws, dst_ws, leg: str, sink: CallSink) -> None:
+class TurnGate:
+    def __init__(self):
+        self.speaker: str | None = None
+        self._free = asyncio.Event()
+        self._free.set()
+
+    def try_acquire(self, leg: str) -> bool:
+        if self.speaker in (None, leg):
+            self.speaker = leg
+            self._free.clear()
+            return True
+        return False
+
+    def release(self, leg: str) -> None:
+        if self.speaker == leg:
+            self.speaker = None
+            self._free.set()
+
+    async def wait_free(self) -> None:
+        await self._free.wait()
+
+
+async def turn_sender(dst_ws, leg: str, queue: asyncio.Queue, sink: CallSink, gate: TurnGate) -> None:
+    """Drain one leg's TTS chunks to the other leg, one speaker at a time.
+
+    Chunks produced while the other leg holds the floor are held in the queue
+    (never dropped — the receiving agent's ASR must still hear the whole
+    utterance) and replayed once the floor frees plus a random backoff.
+    """
+    while True:
+        if gate.speaker == leg:
+            try:
+                audio_b64 = await asyncio.wait_for(queue.get(), timeout=TURN_GAP_SECONDS)
+            except asyncio.TimeoutError:
+                gate.release(leg)
+                continue
+        else:
+            audio_b64 = await queue.get()
+            while not gate.try_acquire(leg):
+                await gate.wait_free()
+                await asyncio.sleep(random.uniform(*BACKOFF_RANGE_SECONDS))
+        try:
+            await dst_ws.send(json.dumps({"user_audio_chunk": audio_b64}))
+        except websockets.exceptions.ConnectionClosed:
+            return
+        sink.add_audio(leg, base64.b64decode(audio_b64))
+        sink.last_audio_ts = time.monotonic()
+        sink.last_sent[_other(leg)] = sink.last_audio_ts
+        live.publish(sink.call_id, json.dumps({"leg": leg, "audio": audio_b64}))
+
+
+async def relay_loop(src_ws, leg: str, sink: CallSink, queue: asyncio.Queue) -> None:
     async for raw in src_ws:
         msg = json.loads(raw)
         msg_type = msg.get("type")
 
         if msg_type == "audio":
-            audio_b64 = msg["audio_event"]["audio_base_64"]
-            await dst_ws.send(json.dumps({"user_audio_chunk": audio_b64}))
-            sink.add_audio(leg, base64.b64decode(audio_b64))
-            sink.last_audio_ts = time.monotonic()
-            sink.last_sent[_other(leg)] = sink.last_audio_ts
-            live.publish(sink.call_id, json.dumps({"leg": leg, "audio": audio_b64}))
+            queue.put_nowait(msg["audio_event"]["audio_base_64"])
 
         elif msg_type == "agent_response":
             text = msg["agent_response_event"]["agent_response"]
@@ -207,9 +262,14 @@ async def run_bridge(
             await neg_ws.send(_negotiator_init(dynamic_vars))
             await deal_ws.send(_dealer_init())
 
+            gate = TurnGate()
+            neg_queue: asyncio.Queue = asyncio.Queue()
+            deal_queue: asyncio.Queue = asyncio.Queue()
             tasks = {
-                asyncio.ensure_future(relay_loop(neg_ws, deal_ws, "negotiator", sink)),
-                asyncio.ensure_future(relay_loop(deal_ws, neg_ws, "dealer", sink)),
+                asyncio.ensure_future(relay_loop(neg_ws, "negotiator", sink, neg_queue)),
+                asyncio.ensure_future(relay_loop(deal_ws, "dealer", sink, deal_queue)),
+                asyncio.ensure_future(turn_sender(deal_ws, "negotiator", neg_queue, sink, gate)),
+                asyncio.ensure_future(turn_sender(neg_ws, "dealer", deal_queue, sink, gate)),
                 asyncio.ensure_future(silence_feeder(deal_ws, "dealer", sink)),
                 asyncio.ensure_future(silence_feeder(neg_ws, "negotiator", sink)),
                 asyncio.ensure_future(_silence_watchdog(sink)),

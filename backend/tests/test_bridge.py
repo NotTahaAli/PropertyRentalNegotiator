@@ -190,69 +190,38 @@ def test_derive_outcome_callback_when_transcript_empty():
     assert bridge.derive_outcome([]) == "callback"
 
 
-def test_relay_forwards_audio_to_other_leg():
+def test_relay_enqueues_audio_for_turn_sender():
     audio_b64 = base64.b64encode(b"\x01\x00\x02\x00").decode()
     src = FakeWebSocket(
         [json.dumps({"type": "audio", "audio_event": {"audio_base_64": audio_b64, "event_id": 1}})]
     )
-    dst = FakeWebSocket()
     sink = bridge.CallSink(call_id="call-1")
 
-    asyncio.run(bridge.relay_loop(src, dst, "negotiator", sink))
+    async def scenario():
+        queue = asyncio.Queue()
+        await bridge.relay_loop(src, "negotiator", sink, queue)
+        return queue.get_nowait(), queue.empty()
 
-    assert len(dst.sent) == 1
-    assert json.loads(dst.sent[0]) == {"user_audio_chunk": audio_b64}
+    chunk, _ = asyncio.run(scenario())
+    assert chunk == audio_b64
+    # nothing forwarded, recorded, or published until the turn sender takes it
+    assert bytes(sink.pcm["negotiator"]) == b""
+    assert sink.last_sent == {"negotiator": 0.0, "dealer": 0.0}
 
 
 def test_relay_answers_ping_with_pong_on_same_leg():
     src = FakeWebSocket(
         [json.dumps({"type": "ping", "ping_event": {"event_id": 42, "ping_ms": 50}})]
     )
-    dst = FakeWebSocket()
     sink = bridge.CallSink(call_id="call-1")
 
-    asyncio.run(bridge.relay_loop(src, dst, "negotiator", sink))
+    async def scenario():
+        await bridge.relay_loop(src, "negotiator", sink, asyncio.Queue())
+
+    asyncio.run(scenario())
 
     assert len(src.sent) == 1
     assert json.loads(src.sent[0]) == {"type": "pong", "event_id": 42}
-    assert dst.sent == []
-
-
-def test_relay_buffers_pcm_for_mix():
-    raw_pcm = b"\x01\x00\x02\x00"
-    audio_b64 = base64.b64encode(raw_pcm).decode()
-    src = FakeWebSocket(
-        [json.dumps({"type": "audio", "audio_event": {"audio_base_64": audio_b64, "event_id": 1}})]
-    )
-    dst = FakeWebSocket()
-    sink = bridge.CallSink(call_id="call-1")
-    sink.start = __import__("time").monotonic() + 100  # no wall-clock lead silence in test
-
-    asyncio.run(bridge.relay_loop(src, dst, "negotiator", sink))
-
-    assert bytes(sink.pcm["negotiator"]) == raw_pcm
-
-
-def test_relay_publishes_leg_tagged_audio():
-    from app import live
-
-    audio_b64 = base64.b64encode(b"\x01\x00").decode()
-    src = FakeWebSocket(
-        [json.dumps({"type": "audio", "audio_event": {"audio_base_64": audio_b64, "event_id": 1}})]
-    )
-    dst = FakeWebSocket()
-    sink = bridge.CallSink(call_id="call-pub")
-
-    async def scenario():
-        queue = live.subscribe("call-pub")
-        try:
-            await bridge.relay_loop(src, dst, "dealer", sink)
-            return queue.get_nowait()
-        finally:
-            live.unsubscribe("call-pub", queue)
-
-    msg = asyncio.run(scenario())
-    assert json.loads(msg) == {"leg": "dealer", "audio": audio_b64}
 
 
 def test_relay_records_vad_scores_per_leg():
@@ -262,29 +231,185 @@ def test_relay_records_vad_scores_per_leg():
             json.dumps({"type": "vad_score", "vad_score_event": {"vad_score": 0.9}}),
         ]
     )
-    dst = FakeWebSocket()
     sink = bridge.CallSink(call_id="call-1")
 
-    asyncio.run(bridge.relay_loop(src, dst, "dealer", sink))
+    async def scenario():
+        await bridge.relay_loop(src, "dealer", sink, asyncio.Queue())
+
+    asyncio.run(scenario())
 
     assert sink.vad_scores["dealer"] == [0.1, 0.9]
     assert sink.vad_scores["negotiator"] == []
-    assert dst.sent == []
 
 
-def test_relay_marks_destination_last_sent():
+def _run_sender_briefly(dst, leg, chunks, sink, gate, seconds):
+    async def scenario():
+        queue = asyncio.Queue()
+        for chunk in chunks:
+            queue.put_nowait(chunk)
+        task = asyncio.ensure_future(bridge.turn_sender(dst, leg, queue, sink, gate))
+        await asyncio.sleep(seconds)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(scenario())
+
+
+def test_turn_sender_forwards_when_floor_is_free():
     audio_b64 = base64.b64encode(b"\x01\x00\x02\x00").decode()
-    src = FakeWebSocket(
-        [json.dumps({"type": "audio", "audio_event": {"audio_base_64": audio_b64, "event_id": 1}})]
-    )
     dst = FakeWebSocket()
     sink = bridge.CallSink(call_id="call-1")
-    assert sink.last_sent == {"negotiator": 0.0, "dealer": 0.0}
+    sink.start = __import__("time").monotonic() + 100
 
-    asyncio.run(bridge.relay_loop(src, dst, "negotiator", sink))
+    _run_sender_briefly(dst, "negotiator", [audio_b64], sink, bridge.TurnGate(), seconds=0.05)
 
+    assert json.loads(dst.sent[0]) == {"user_audio_chunk": audio_b64}
+    assert bytes(sink.pcm["negotiator"]) == b"\x01\x00\x02\x00"
     assert sink.last_sent["dealer"] > 0.0
     assert sink.last_sent["negotiator"] == 0.0
+
+
+def test_turn_sender_publishes_leg_tagged_audio():
+    from app import live
+
+    audio_b64 = base64.b64encode(b"\x01\x00").decode()
+    dst = FakeWebSocket()
+    sink = bridge.CallSink(call_id="call-pub")
+
+    async def scenario():
+        sub = live.subscribe("call-pub")
+        try:
+            queue = asyncio.Queue()
+            queue.put_nowait(audio_b64)
+            task = asyncio.ensure_future(
+                bridge.turn_sender(dst, "dealer", queue, sink, bridge.TurnGate())
+            )
+            await asyncio.sleep(0.05)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return sub.get_nowait()
+        finally:
+            live.unsubscribe("call-pub", sub)
+
+    msg = asyncio.run(scenario())
+    assert json.loads(msg) == {"leg": "dealer", "audio": audio_b64}
+
+
+def test_turn_sender_holds_audio_while_other_leg_speaks(monkeypatch):
+    monkeypatch.setattr(bridge, "TURN_GAP_SECONDS", 10)  # negotiator never yields
+    audio_b64 = base64.b64encode(b"\x01\x00").decode()
+    dst = FakeWebSocket()
+    sink = bridge.CallSink(call_id="call-1")
+    gate = bridge.TurnGate()
+    assert gate.try_acquire("negotiator")
+
+    _run_sender_briefly(dst, "dealer", [audio_b64], sink, gate, seconds=0.2)
+
+    assert dst.sent == []
+    assert bytes(sink.pcm["dealer"]) == b""
+
+
+def test_turn_sender_resumes_after_backoff_once_floor_frees(monkeypatch):
+    import time as _time
+
+    monkeypatch.setattr(bridge.random, "uniform", lambda lo, hi: 0.1)
+    audio_b64 = base64.b64encode(b"\x01\x00").decode()
+
+    class TimedWebSocket(FakeWebSocket):
+        async def send(self, message):
+            self.sent.append((message, _time.monotonic()))
+
+    dst = TimedWebSocket()
+    sink = bridge.CallSink(call_id="call-1")
+    sink.start = _time.monotonic() + 100
+    gate = bridge.TurnGate()
+    assert gate.try_acquire("negotiator")
+
+    async def scenario():
+        queue = asyncio.Queue()
+        queue.put_nowait(audio_b64)
+        task = asyncio.ensure_future(bridge.turn_sender(dst, "dealer", queue, sink, gate))
+        await asyncio.sleep(0.05)
+        release_ts = _time.monotonic()
+        gate.release("negotiator")
+        await asyncio.sleep(0.3)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return release_ts
+
+    release_ts = asyncio.run(scenario())
+
+    assert len(dst.sent) == 1
+    message, sent_ts = dst.sent[0]
+    assert json.loads(message) == {"user_audio_chunk": audio_b64}
+    # interrupted leg waits its random backoff after the floor frees before speaking
+    assert sent_ts - release_ts >= 0.09
+
+
+def test_turn_senders_never_overlap_in_recording(monkeypatch):
+    monkeypatch.setattr(bridge, "TURN_GAP_SECONDS", 0.05)
+    monkeypatch.setattr(bridge.random, "uniform", lambda lo, hi: 0.02)
+    neg_chunks = [base64.b64encode(_pcm16(1, 1)).decode()] * 2
+    deal_chunks = [base64.b64encode(_pcm16(2, 2)).decode()] * 2
+    sink = bridge.CallSink(call_id="call-1")
+    sink.start = __import__("time").monotonic() + 100
+    gate = bridge.TurnGate()
+
+    async def scenario():
+        neg_q, deal_q = asyncio.Queue(), asyncio.Queue()
+        for c in neg_chunks:
+            neg_q.put_nowait(c)
+        for c in deal_chunks:
+            deal_q.put_nowait(c)
+        tasks = [
+            asyncio.ensure_future(
+                bridge.turn_sender(FakeWebSocket(), "negotiator", neg_q, sink, gate)
+            ),
+            asyncio.ensure_future(bridge.turn_sender(FakeWebSocket(), "dealer", deal_q, sink, gate)),
+        ]
+        await asyncio.sleep(0.5)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+    left, right = _unpack_wav(
+        bridge.stereo_wav(bytes(sink.pcm["negotiator"]), bytes(sink.pcm["dealer"]))
+    )
+    assert sum(left) == 4  # both legs got all their audio out
+    assert sum(right) == 8
+    # at every frame at most one leg is speaking
+    assert all(l == 0 or r == 0 for l, r in zip(left, right))
+
+
+def test_turn_sender_stops_when_socket_closes():
+    import websockets
+
+    class ClosedWebSocket(FakeWebSocket):
+        async def send(self, message):
+            raise websockets.exceptions.ConnectionClosedOK(None, None)
+
+    sink = bridge.CallSink(call_id="call-1")
+
+    async def scenario():
+        queue = asyncio.Queue()
+        queue.put_nowait(base64.b64encode(b"\x01\x00").decode())
+        await asyncio.wait_for(
+            bridge.turn_sender(ClosedWebSocket(), "dealer", queue, sink, bridge.TurnGate()),
+            timeout=2,
+        )
+
+    asyncio.run(scenario())  # returns instead of raising
 
 
 def _run_feeder_briefly(ws, leg, sink, seconds):
@@ -376,10 +501,12 @@ def test_relay_records_agent_response_and_swaps_speaker_for_user_transcript():
             ),
         ]
     )
-    dst = FakeWebSocket()
     sink = bridge.CallSink(call_id="call-1")
 
-    asyncio.run(bridge.relay_loop(src, dst, "negotiator", sink))
+    async def scenario():
+        await bridge.relay_loop(src, "negotiator", sink, asyncio.Queue())
+
+    asyncio.run(scenario())
 
     assert sink.events == [
         ("negotiator", "agent_response", "hi"),
