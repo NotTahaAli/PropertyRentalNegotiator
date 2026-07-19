@@ -73,6 +73,9 @@ class CallSink:
         self.call_id = call_id
         self.pcm: dict[str, bytearray] = {"negotiator": bytearray(), "dealer": bytearray()}
         self.events: list[tuple[str, str, str]] = []
+        # K5 diagnostic: server-side VAD score of the audio *sent to* each leg.
+        # Dealer-leg peak ~0 would confirm the relayed-audio/VAD theory (TODO.md).
+        self.vad_scores: dict[str, list[float]] = {"negotiator": [], "dealer": []}
         self.last_audio_ts = time.monotonic()
 
 
@@ -95,6 +98,9 @@ async def relay_loop(src_ws, dst_ws, leg: str, sink: CallSink) -> None:
         elif msg_type == "user_transcript":
             text = msg["user_transcription_event"]["user_transcript"]
             sink.events.append((_other(leg), "user_transcript", text))
+
+        elif msg_type == "vad_score":
+            sink.vad_scores[leg].append(msg["vad_score_event"]["vad_score"])
 
         elif msg_type == "ping":
             event_id = msg["ping_event"]["event_id"]
@@ -174,6 +180,8 @@ async def run_bridge(
     except Exception:
         failed = True
     finally:
+        peaks = {leg: max(scores, default=0.0) for leg, scores in sink.vad_scores.items()}
+        print(f"call {call_id} vad peaks: {peaks}")
         wav_bytes = mix_pcm(bytes(sink.pcm["negotiator"]), bytes(sink.pcm["dealer"]))
         recording_url = None
         try:

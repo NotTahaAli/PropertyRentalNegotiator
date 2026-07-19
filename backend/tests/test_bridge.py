@@ -155,6 +155,23 @@ def test_relay_buffers_pcm_for_mix():
     assert bytes(sink.pcm["negotiator"]) == raw_pcm
 
 
+def test_relay_records_vad_scores_per_leg():
+    src = FakeWebSocket(
+        [
+            json.dumps({"type": "vad_score", "vad_score_event": {"vad_score": 0.1}}),
+            json.dumps({"type": "vad_score", "vad_score_event": {"vad_score": 0.9}}),
+        ]
+    )
+    dst = FakeWebSocket()
+    sink = bridge.CallSink(call_id="call-1")
+
+    asyncio.run(bridge.relay_loop(src, dst, "dealer", sink))
+
+    assert sink.vad_scores["dealer"] == [0.1, 0.9]
+    assert sink.vad_scores["negotiator"] == []
+    assert dst.sent == []
+
+
 def test_relay_records_agent_response_and_swaps_speaker_for_user_transcript():
     src = FakeWebSocket(
         [

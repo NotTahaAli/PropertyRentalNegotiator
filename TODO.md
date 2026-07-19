@@ -7,17 +7,17 @@ an item; delete resolved items instead of checking them off.
 
 ## Blocked: frontend K8 → backend wiring
 
-- **Dealer seeding on spec create** — `POST /specs` is now fully wired from
-  the frontend (auth token + shape adapter in `frontend/lib/api.ts`: wraps
-  the flat `JobSpec` into `spec_json`, unwraps the returned row into
-  `{spec_id, dealers_seeded}`). But `create_spec` does not seed dealers —
-  seeding is still the standalone `backend/src/app/seed.py` script, so the
-  adapter reports `dealers_seeded: 0`. Open decision: seed-on-create in the
-  backend, or a separate frontend call after `/specs` succeeds. K9 needs
-  dealers to exist to show anything.
-
 - **`/calls/[spec_id]` route** — doesn't exist yet; K9 Call Center UI not
   started.
+
+- **Post-call webhook dashboard wiring** — backend endpoint
+  `POST /webhooks/post-call` is built and HMAC-verified (fail-closed on env
+  `ELEVENLABS_WEBHOOK_SECRET`; extracts `call_id` from the conversation's
+  dynamic variables, maps the transcript, derives outcome). Remaining steps
+  are dashboard-side: create the post-call webhook in the ElevenLabs
+  dashboard pointing at
+  `https://negotiator-backend.onrender.com/webhooks/post-call`, then set the
+  generated secret as `ELEVENLABS_WEBHOOK_SECRET` locally and on Render.
 
 ## Blocked: K5 dealer persona doesn't verbally reply to relayed audio
 
@@ -50,6 +50,15 @@ conversational-reply bug is not.
   spend on trial-and-error. Revisit after K4 lands (persona prompts get
   tuned then anyway); don't re-attempt without a concrete new hypothesis —
   four separate live experiments already ruled out the cheap explanations.
+  **New decisive diagnostic now wired (no credit spent yet):** the
+  conversation WebSocket emits `vad_score` server events — the server-side
+  voice-activity score of the audio *sent to* that leg. `bridge.relay_loop`
+  now records them per leg and `run_bridge` prints one
+  `call <id> vad peaks: {...}` line at call end. On the next live bridge
+  probe, read that line in Render logs: dealer-leg peak ≈ 0 confirms the
+  VAD/relayed-TTS-audio theory (then escalate to ElevenLabs support with
+  that evidence); a high peak refutes it and moves suspicion downstream to
+  ASR/turn-taking.
 
 - **Live voice intake click-through** — voice path fully wired
   (`set_spec_field` client tool + `end_call` live on the Estimator,
@@ -77,9 +86,16 @@ conversational-reply bug is not.
   hid the quoting dealer's own bid. Test rows cleaned up after. Note: data
   tables were empty (K2 seed data gone, likely during the K13 `user_id`
   migration) — re-run `seed.py` before the next live call test.
-- Transcript webhook (`api.py` `/calls/{id}/transcript`) still unauthenticated
-  — separate mechanism (ElevenLabs post-call HMAC webhook, dashboard-side),
-  unchanged by K4; keep on the list until wired.
+- Dealer seeding on spec create: `POST /specs` now seeds one dealer per
+  `vertical.json` persona via `seed.seed_dealers` (shared with the
+  `seed.py` script) and returns `dealers_seeded`; the frontend adapter
+  passes the real count through. K9 unblocked on data.
+- Transcript webhook auth: the unauthenticated custom-shape
+  `/calls/{id}/transcript` endpoint is gone, replaced by
+  `POST /webhooks/post-call` verifying the real ElevenLabs
+  `ElevenLabs-Signature` HMAC via the `elevenlabs` SDK
+  (`webhooks.construct_event`, 30-min timestamp tolerance, fail-closed
+  without the secret). Dashboard-side wiring still pending (item above).
 
 - Merge priority for `location` in the K8 intake merge logic: confirmed
   voice-wins (matches the existing code and mock data, no change needed).
