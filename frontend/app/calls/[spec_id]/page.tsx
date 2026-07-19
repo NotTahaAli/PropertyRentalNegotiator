@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DealerCard from "@/components/calls/DealerCard";
@@ -32,27 +32,44 @@ export default function CallCenterPage() {
     finishRoleplaySession,
     seedMockCompleted,
     stateFor,
+    historyFor,
+    resolveCallNumber,
   } = useCallCenter(specId);
 
-  // Report citation deep-link: ?call=<1-based dealer index>&line=<n>. Seeding
-  // a canned completed call only ever happens under USE_MOCKS — in real mode
-  // this just selects the dealer (if resolvable) and highlights the line if
-  // it's already in whatever transcript is really there; it never invents one.
+  // Report citation deep-link: ?call=<call_number>&line=<n>. Mock mode seeds a
+  // canned completed call; real mode resolves call_number against every call
+  // fetched for this spec (same ordering as the backend's report citations)
+  // and expands that specific round's transcript, even if it isn't the
+  // dealer's latest round.
   const callParam = searchParams.get("call");
   const lineParam = searchParams.get("line");
   const highlightLine = lineParam ? Number(lineParam) : undefined;
+  const [deepLinkCallId, setDeepLinkCallId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!USE_MOCKS || !callParam || !dealers) return;
-    const dealer = MOCK_DEALERS[Number(callParam) - 1];
-    if (!dealer) return;
-    select(dealer.id);
-    if (stateFor(dealer.id).state === "idle") {
-      const row = MOCK_REPORT.rows.find((r) => r.dealer_id === dealer.id);
-      seedMockCompleted(dealer.id, row?.round ?? 1);
-    }
+    if (!callParam || !dealers) return;
+    // Deferred a tick: numberedCalls (real mode) hydrates asynchronously in
+    // useCallCenter right after `dealers` is set, so resolving in the same
+    // tick `dealers` arrives can race it. Matches the async-IIFE idiom
+    // useCallCenter's own hydration effect uses for the same reason.
+    void (async () => {
+      if (USE_MOCKS) {
+        const dealer = MOCK_DEALERS[Number(callParam) - 1];
+        if (!dealer) return;
+        select(dealer.id);
+        if (stateFor(dealer.id).state === "idle") {
+          const row = MOCK_REPORT.rows.find((r) => r.dealer_id === dealer.id);
+          seedMockCompleted(dealer.id, row?.round ?? 1);
+        }
+        return;
+      }
+      const resolved = resolveCallNumber(Number(callParam));
+      if (!resolved) return;
+      select(resolved.dealer_id);
+      setDeepLinkCallId(resolved.id);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callParam, dealers]);
+  }, [callParam, dealers, resolveCallNumber]);
 
   const anyIdle = dealers?.some((d) => {
     if (d.status === "declined") return false;
@@ -128,6 +145,7 @@ export default function CallCenterPage() {
                 key={d.id}
                 dealer={d}
                 callState={stateFor(d.id)}
+                history={historyFor(d.id)}
                 selected={selected === d.id}
                 roleplay={!!roleplay[d.id]}
                 onSelect={() => select(d.id)}
@@ -135,6 +153,8 @@ export default function CallCenterPage() {
                 onPersonaChange={(p) => void setPersona(d.id, p)}
                 onRoleplayChange={(on) => setRoleplay(d.id, on)}
                 onStatusChange={(s) => void setDealerStatus(d.id, s)}
+                autoExpandCallId={deepLinkCallId && d.id === selected ? deepLinkCallId : undefined}
+                highlightLine={deepLinkCallId && d.id === selected ? highlightLine : undefined}
               />
             ))}
           </div>

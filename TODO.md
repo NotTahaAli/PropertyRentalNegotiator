@@ -82,6 +82,19 @@ an item; delete resolved items instead of checking them off.
 
 ## Open: manual click-throughs
 
+- **Call history + citation deep-link real-mode check** — `DealerCard`'s new
+  "Call history" list and the fixed `[call N, line M]` citation resolution
+  (`useCallCenter.history`/`resolveCallNumber`, `frontend/app/calls/[spec_id]/
+  page.tsx`) are typecheck/lint/build-clean but never exercised against a real
+  login session + real Supabase call rows (`/calls` route is auth-guarded, so
+  a mock-mode click-through can't reach it — mock mode also never populates
+  `history` at all, since it's wired to `GET /calls?spec_id=`, not the mock
+  data path). Needs: log in, run a dealer through 2+ rounds, confirm every
+  round appears in "Call history" and expands to the right transcript, then
+  click a report citation for an older round and confirm it lands on the
+  right dealer + line instead of doing nothing (today's real-mode behavior
+  before this fix).
+
 - **Report page real-mode check** — `GET /report/{spec_id}` now exists and the
   page calls it for real, but it has only ever rendered `MOCK_REPORT` in a
   browser. Needs one spec with completed calls: confirm ranking order matches
@@ -141,6 +154,14 @@ an item; delete resolved items instead of checking them off.
   gained `{{prior_call_note}}`. Until this is re-run, the backend will send the
   new dynamic variables and the deployed agents will ignore them — the feature
   will look broken while the code is correct.
+- **Also pending in the same re-run**: `get_leverage`'s new response shape
+  (`is_current_dealer`, `flagged` tags, own quotes uncapped + up to 5
+  competitors instead of top-3-competitors-only) and `log_quote`'s
+  `property_ref` param flipping from optional to schema-required — both are
+  `agent_factory.py`/tool-schema changes, live only after `make_agents`
+  re-runs. Needs one real call to confirm the negotiator actually asks for a
+  property identifier before logging a quote (even a single-property dealer)
+  and cites a competitor quote from `get_leverage` mid-negotiation.
 - **Confirm Render actually redeployed.** Same trap: a fix that is on `main` but
   not deployed behaves exactly like a fix that doesn't work.
 

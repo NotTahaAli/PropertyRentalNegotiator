@@ -399,19 +399,21 @@ def _leverage(dealer_id="d1"):
     )
 
 
-def test_get_leverage_sorted_top3_with_names(monkeypatch):
+def test_get_leverage_sorted_top5_competitors_with_names(monkeypatch):
     _wire_leverage(
         monkeypatch,
         {
             "c1": [_quote("d2", 2000000), _quote("d2", 1800000)],
-            "c2": [_quote("d3", 1500000), _quote("d3", 2200000)],
+            "c2": [_quote("d3", 1500000), _quote("d3", 2200000), _quote("d3", 2400000)],
+            "c3": [_quote("d3", 2600000)],  # 6th competitor quote, cap excludes it
         },
     )
     body = _leverage("d1").json()
-    totals = [q["total_first_year"] for q in body["quotes"]]
-    assert totals == [1500000, 1800000, 2000000]
-    assert body["quotes"][0]["dealer"] == "Metro Realty"
-    assert set(body["quotes"][0]) == {
+    competitors = [q for q in body["quotes"] if not q["is_current_dealer"]]
+    totals = [q["total_first_year"] for q in competitors]
+    assert totals == [1500000, 1800000, 2000000, 2200000, 2400000]
+    assert competitors[0]["dealer"] == "Metro Realty"
+    assert set(competitors[0]) == {
         "dealer",
         "property",
         "monthly_rent",
@@ -419,10 +421,12 @@ def test_get_leverage_sorted_top3_with_names(monkeypatch):
         "commission",
         "maintenance",
         "total_first_year",
+        "is_current_dealer",
+        "flagged",
     }
 
 
-def test_get_leverage_excludes_flagged_and_own(monkeypatch):
+def test_get_leverage_includes_own_dealer_tagged_and_not_capped(monkeypatch):
     _wire_leverage(
         monkeypatch,
         {
@@ -431,11 +435,24 @@ def test_get_leverage_excludes_flagged_and_own(monkeypatch):
         },
     )
     body = _leverage("d1").json()
-    assert [q["total_first_year"] for q in body["quotes"]] == [1900000]
+    own = [q for q in body["quotes"] if q["is_current_dealer"]]
+    assert [q["total_first_year"] for q in own] == [1000000]
+    competitors = [q for q in body["quotes"] if not q["is_current_dealer"]]
+    assert {q["total_first_year"] for q in competitors} == {1200000, 1900000}
+
+
+def test_get_leverage_includes_flagged_quotes_tagged(monkeypatch):
+    _wire_leverage(
+        monkeypatch,
+        {"c2": [_quote("d2", 1200000, flagged=True), _quote("d3", 1900000)]},
+    )
+    body = _leverage("d1").json()
+    flagged_map = {q["total_first_year"]: q["flagged"] for q in body["quotes"]}
+    assert flagged_map == {1200000: True, 1900000: False}
 
 
 def test_get_leverage_empty_when_nothing_qualifies(monkeypatch):
-    _wire_leverage(monkeypatch, {"c1": [_quote("d1", 1000000)]})
+    _wire_leverage(monkeypatch, {})
     assert _leverage("d1").json() == {"quotes": []}
 
 

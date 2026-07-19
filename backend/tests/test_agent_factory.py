@@ -42,9 +42,11 @@ def test_log_quote_tool_body_covers_every_fee_taxonomy_item():
         assert props[fee]["type"] == "number"
 
 
-def test_log_quote_has_optional_property_ref_param():
-    """A dealer with several matching shops needs a way to discriminate quotes;
-    it must stay optional so a single-property dealer's flow is unaffected."""
+def test_log_quote_requires_property_ref_param():
+    """The negotiator must always ask the dealer to identify the specific
+    shop/property before logging a quote, even a single-property dealer, so
+    every quote carries a real reference instead of falling into the
+    null-bucket."""
     config = load_vertical()
     tools = build_tool_schemas(config)
     log_quote = next(t for t in tools if t["name"] == "log_quote")
@@ -52,7 +54,7 @@ def test_log_quote_has_optional_property_ref_param():
     required = set(log_quote["api_schema"]["request_body_schema"]["required"])
     assert "property_ref" in props
     assert props["property_ref"]["type"] == "string"
-    assert "property_ref" not in required
+    assert "property_ref" in required
 
 
 def test_log_quote_allows_partial_quotes():
@@ -65,7 +67,7 @@ def test_log_quote_allows_partial_quotes():
     tools = build_tool_schemas(config)
     log_quote = next(t for t in tools if t["name"] == "log_quote")
     required = set(log_quote["api_schema"]["request_body_schema"]["required"])
-    assert required == {"monthly_rent", "call_id", "dealer_id"}
+    assert required == {"monthly_rent", "call_id", "dealer_id", "property_ref"}
     assert "update" in log_quote["description"].lower()
 
 
