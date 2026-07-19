@@ -10,7 +10,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 
 function nextPath(): string {
   const next = new URLSearchParams(window.location.search).get("next");
-  return next && next.startsWith("/") ? next : "/";
+  return next && next.startsWith("/") ? next : "/dashboard";
 }
 
 export default function LoginPage() {
