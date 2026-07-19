@@ -7,8 +7,22 @@ an item; delete resolved items instead of checking them off.
 
 ## Blocked: frontend K8 → backend wiring
 
-- **`/calls/[spec_id]` route** — doesn't exist yet; K9 Call Center UI not
-  started.
+- **Role-play widget embed in DealerCard** — the "Answer as dealer" toggle
+  on `/calls/[spec_id]` renders a placeholder only. Backend roleplay mode
+  (`POST /calls/start` with `mode: "roleplay"`) already returns
+  `negotiator_agent_id` + `dynamic_variables`; the frontend never consumes
+  them. Wire the same `@elevenlabs/react` `ConversationProvider` +
+  `useConversation` pattern K8's `VoiceIntake.tsx` proved, passing the
+  dynamic variables at session start. This is the K5-fallback demo path —
+  the demo must never depend on the bridge working, so this gap blocks the
+  closed-loop demo while the K5 persona-reply bug stays open.
+
+- **`make_agents` re-run needed for K4/K7 prompt+schema changes** —
+  `log_quote` now requires `binding` in its tool schema, and the negotiator
+  prompt gained the always-ask-for-a-written-quote instruction plus friction
+  handling (interruptions, vague answers, callback commitments). Deployed
+  ElevenLabs agents/tools still carry the old config until
+  `uv run python -m app.make_agents` is re-run with live keys.
 
 - **Post-call webhook dashboard wiring** — backend endpoint
   `POST /webhooks/post-call` is built and HMAC-verified (fail-closed on env

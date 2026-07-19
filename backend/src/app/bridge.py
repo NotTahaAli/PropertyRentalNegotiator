@@ -24,7 +24,9 @@ SAMPLE_WIDTH = 2  # bytes per 16-bit PCM sample
 MAX_CALL_SECONDS = 180
 SILENCE_SECONDS = 15
 
-_QUOTE_NUMBER_RE = re.compile(r"\d")
+# ponytail: 4+ digit number (commas stripped) = money in PKR; misses spelled-out
+# amounts ("eighty five thousand") — webhook/quotes table is the ground truth anyway.
+_QUOTE_NUMBER_RE = re.compile(r"\d{4,}")
 _DECLINE_PHRASES = ("not interested", "no deal", "not available", "already rented")
 _CALLBACK_PHRASES = ("call you back", "call back", "callback")
 
@@ -108,7 +110,9 @@ async def relay_loop(src_ws, dst_ws, leg: str, sink: CallSink) -> None:
 
 
 def derive_outcome(transcript: list[dict]) -> str:
-    dealer_lines = [e["text"].lower() for e in transcript if e["speaker"] == "dealer"]
+    dealer_lines = [
+        e["text"].lower().replace(",", "") for e in transcript if e["speaker"] == "dealer"
+    ]
     if any(_QUOTE_NUMBER_RE.search(line) for line in dealer_lines):
         return "quote"
     if any(phrase in line for line in dealer_lines for phrase in _DECLINE_PHRASES):

@@ -43,6 +43,21 @@ def test_log_quote_tool_body_covers_every_fee_taxonomy_item():
     assert set(config.fee_taxonomy) <= set(required)
 
 
+def test_log_quote_requires_binding():
+    # Leverage excludes flagged quotes and no_written_quote flags anything non-binding;
+    # if the agent can omit binding, every forgotten quote is flagged and the leverage
+    # pool starves. Force the agent to always report it.
+    config = load_vertical()
+    tools = build_tool_schemas(config)
+    log_quote = next(t for t in tools if t["name"] == "log_quote")
+    assert "binding" in log_quote["api_schema"]["request_body_schema"]["required"]
+
+
+def test_negotiator_prompt_instructs_asking_for_written_quote():
+    config = load_vertical()
+    assert "writing" in config.negotiator_prompt.lower()
+
+
 def test_get_leverage_and_get_benchmark_bodies_exclude_fee_taxonomy():
     config = load_vertical()
     tools = build_tool_schemas(config)

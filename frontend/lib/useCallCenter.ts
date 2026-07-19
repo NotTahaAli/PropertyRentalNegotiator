@@ -13,6 +13,7 @@ const MOCK_LINE_MS = 600;
 
 export interface DealerCallState {
   state: UiCallState;
+  round?: number; // negotiation round of the last started call (2+ = leverage round)
   callId?: string;
   startedAt?: number; // epoch ms, set when the call goes live
   transcript: TranscriptLine[];
@@ -97,11 +98,11 @@ export function useCallCenter(specId: string) {
   );
 
   const runRealCall = useCallback(
-    async (dealer: Dealer) => {
-      patch(dealer.id, { state: "calling", transcript: [], error: undefined });
+    async (dealer: Dealer, round: number) => {
+      patch(dealer.id, { state: "calling", round, transcript: [], error: undefined });
       let callId: string;
       try {
-        const res = await startCall(specId, dealer.id, "bridge");
+        const res = await startCall(specId, dealer.id, "bridge", round);
         callId = res.call_id;
       } catch {
         patch(dealer.id, { state: "failed", error: "Could not start call — backend unreachable?" });
@@ -150,6 +151,15 @@ export function useCallCenter(specId: string) {
     [specId, patch, addTimer, clearTimers]
   );
 
+  // a completed call bumps the next one to a leverage round; retries keep their round
+  const nextRound = useCallback(
+    (dealerId: string) => {
+      const prev = calls[dealerId];
+      return prev?.state === "done" ? (prev.round ?? 1) + 1 : (prev?.round ?? 1);
+    },
+    [calls]
+  );
+
   const call = useCallback(
     (dealerId: string) => {
       const dealer = dealers?.find((d) => d.id === dealerId);
@@ -159,9 +169,9 @@ export function useCallCenter(specId: string) {
       clearTimers(dealerId);
       setSelected(dealerId);
       if (USE_MOCKS) runMockCall(dealer);
-      else void runRealCall(dealer);
+      else void runRealCall(dealer, nextRound(dealerId));
     },
-    [dealers, calls, clearTimers, runMockCall, runRealCall]
+    [dealers, calls, clearTimers, runMockCall, runRealCall, nextRound]
   );
 
   const setPersona = useCallback(
@@ -179,10 +189,10 @@ export function useCallCenter(specId: string) {
       const s = calls[d.id]?.state ?? "idle";
       if (s === "idle" || s === "failed") {
         if (USE_MOCKS) runMockCall(d);
-        else void runRealCall(d);
+        else void runRealCall(d, nextRound(d.id));
       }
     });
-  }, [dealers, calls, runMockCall, runRealCall]);
+  }, [dealers, calls, runMockCall, runRealCall, nextRound]);
 
   return {
     dealers,

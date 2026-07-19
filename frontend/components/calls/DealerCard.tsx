@@ -112,7 +112,11 @@ export default function DealerCard({
             onCall();
           }}
         >
-          {state === "failed" ? "Retry call" : state === "done" ? "Call again" : "Call"}
+          {state === "failed"
+            ? "Retry call"
+            : state === "done"
+              ? `Round ${(callState.round ?? 1) + 1} call`
+              : "Call"}
         </Button>
 
         {/* role-play mode toggle — K5-fallback demo path */}

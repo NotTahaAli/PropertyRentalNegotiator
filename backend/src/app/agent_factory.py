@@ -74,7 +74,9 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
             "binding": {"type": "boolean", "description": "Whether the dealer can produce a written quote."},
             "notes": {"type": "string", "description": "Any other relevant detail about the quote."},
         },
-        required=[*config.fee_taxonomy, "call_id", "dealer_id"],
+        # binding required: no_written_quote flags non-binding quotes and get_leverage
+        # excludes flagged rows — an omitted binding would silently starve leverage.
+        required=[*config.fee_taxonomy, "call_id", "dealer_id", "binding"],
     )
 
     redflag_fees = [f for f in ("monthly_rent", "advance_months") if f in fee_properties]

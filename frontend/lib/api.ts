@@ -110,12 +110,13 @@ export async function updateDealer(
 export async function startCall(
   specId: string,
   dealerId: string,
-  mode: "bridge" | "roleplay" = "bridge"
+  mode: "bridge" | "roleplay" = "bridge",
+  round: number = 1
 ): Promise<CallStartResponse> {
   const r = await fetch(`${BASE}/calls/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ spec_id: specId, dealer_id: dealerId, round: 1, mode }),
+    body: JSON.stringify({ spec_id: specId, dealer_id: dealerId, round, mode }),
   });
   if (!r.ok) throw new Error(`start call failed: ${r.status}`);
   return r.json();

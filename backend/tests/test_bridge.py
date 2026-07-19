@@ -109,6 +109,23 @@ def test_derive_outcome_callback_default():
     assert bridge.derive_outcome(transcript) == "callback"
 
 
+def test_derive_outcome_ignores_small_incidental_numbers():
+    # "call me at 3pm" or "shop number 12" is not a quote
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "Come to shop number 12, call me at 3pm."},
+    ]
+
+    assert bridge.derive_outcome(transcript) == "callback"
+
+
+def test_derive_outcome_quote_with_comma_separated_amount():
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "Rent is 85,000 per month."},
+    ]
+
+    assert bridge.derive_outcome(transcript) == "quote"
+
+
 def test_derive_outcome_callback_when_transcript_empty():
     assert bridge.derive_outcome([]) == "callback"
 

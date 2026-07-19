@@ -3,7 +3,7 @@ import datetime
 import pytest
 from pydantic import ValidationError
 
-from app.vertical import SpecField, build_spec_model, load_vertical
+from app.vertical import DEFAULT_CONFIG_PATH, SpecField, build_spec_model, load_vertical
 
 
 def test_config_loads_and_validates():
@@ -131,3 +131,19 @@ def test_spec_model_allows_omitting_optional_field():
     )
     assert spec.frontage_ft is None
     assert spec.parking is None
+
+
+def test_second_vertical_config_swaps_cleanly():
+    # The "config not code" demo: a second vertical must validate against the same
+    # model and drive the same agent factory with zero code changes.
+    from app.agent_factory import build_agents, build_tool_schemas
+
+    path = DEFAULT_CONFIG_PATH.parent / "auto_repair_pk.json"
+    config = load_vertical(path)
+    assert config.vertical != load_vertical().vertical
+    SpecModel = build_spec_model(config)
+    assert SpecModel is not None
+    agents = {a.name for a in build_agents(config)}
+    assert {"estimator", "negotiator", "stonewaller", "lowballer", "upseller", "firm"} <= agents
+    tools = {t["name"] for t in build_tool_schemas(config)}
+    assert tools == {"log_quote", "get_leverage", "check_redflag", "get_benchmark"}
