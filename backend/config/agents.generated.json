@@ -1,0 +1,17 @@
+{
+  "tools": {
+    "log_quote": "tool_3301kxvg8ra4e0avgnzkm186cesm",
+    "get_leverage": "tool_6701kxvg8rp7f0nv1sp9zh1gzddw",
+    "check_redflag": "tool_0101kxvg8s04efmtv1jx47qx6xba",
+    "get_benchmark": "tool_2201kxvg8sa9fbq9zmvcc8gj2apn",
+    "set_spec_field": "tool_0601kxvw56h2erjbeehn19g8h2kx"
+  },
+  "agents": {
+    "estimator": "agent_3001kxvg8tzdet5aeah0vqr3wje5",
+    "negotiator": "agent_1501kxvg8x90fv3aq5xez7mbpjva",
+    "stonewaller": "agent_2501kxvg8yese289myvhkkmn01na",
+    "lowballer": "agent_9601kxvg8zpaemgbysvegmvq5vas",
+    "upseller": "agent_6101kxvg91ese42a7zjqgsjwycx1",
+    "firm": "agent_7001kxvg92xne9ttfw0tgw27ccyx"
+  }
+}
