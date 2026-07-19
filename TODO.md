@@ -26,26 +26,6 @@ an item; delete resolved items instead of checking them off.
 - **`/calls/[spec_id]` route** — doesn't exist yet; K9 Call Center UI not
   started.
 
-## Blocked: K4 live wiring (needs secrets + live ElevenLabs run)
-
-K4 endpoints are built and unit-tested (132/132 green); what's left needs the
-real secret and a live make_agents run:
-
-- Generate a secret (e.g. `openssl rand -hex 32`), set `TOOLS_WEBHOOK_SECRET`
-  in `backend/.env` AND in the Render dashboard (render.yaml already lists the
-  key, `sync: false`). Endpoints fail closed (401) until Render has it.
-- Re-run `cd backend && uv run python -m app.make_agents --backend-base-url
-  https://negotiator-backend.onrender.com` — idempotent update adds the
-  `X-Tools-Secret` header to all 4 ElevenLabs tools and the new required
-  `dealer_id` param to `get_leverage`. Aborts with KeyError if the secret env
-  var is missing (on purpose).
-- curl-verify on Render: no header → 401; with header → contract shapes;
-  a `log_quote` row visible in the Supabase dashboard (the plan doc's
-  acceptance criterion).
-- Transcript webhook (`api.py` `/calls/{id}/transcript`) still unauthenticated
-  — separate mechanism (ElevenLabs post-call HMAC webhook, dashboard-side),
-  unchanged by K4.
-
 ## Blocked: K5 dealer persona doesn't verbally reply to relayed audio
 
 Live-tested against real ElevenLabs agents. Connection-health bug is fixed;
@@ -79,6 +59,19 @@ conversational-reply bug is not.
   four separate live experiments already ruled out the cheap explanations.
 
 ## Resolved
+
+- K4 live wiring: `TOOLS_WEBHOOK_SECRET` set locally + on Render, live
+  `make_agents` re-run done (header + `dealer_id` param registered). All 4
+  deployed endpoints live-verified against real Supabase rows: no header →
+  401; benchmark fallback scaled correctly; lowball → `confirm_then_flag` +
+  scope question; `log_quote` wrote a real row (`total_first_year` 2,940,000,
+  unflagged); `get_leverage` returned it to the other dealer and correctly
+  hid the quoting dealer's own bid. Test rows cleaned up after. Note: data
+  tables were empty (K2 seed data gone, likely during the K13 `user_id`
+  migration) — re-run `seed.py` before the next live call test.
+- Transcript webhook (`api.py` `/calls/{id}/transcript`) still unauthenticated
+  — separate mechanism (ElevenLabs post-call HMAC webhook, dashboard-side),
+  unchanged by K4; keep on the list until wired.
 
 - Merge priority for `location` in the K8 intake merge logic: confirmed
   voice-wins (matches the existing code and mock data, no change needed).
