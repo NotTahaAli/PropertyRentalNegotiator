@@ -48,28 +48,61 @@ class FakeClient:
         self.conversational_ai = FakeConversationalAi(remote_agents, remote_tools)
 
 
-def test_first_run_creates_four_tools_and_six_agents():
+def test_first_run_creates_five_tools_and_six_agents():
     config = load_vertical()
     client = FakeClient()
 
     manifest = upsert_all(client, config, manifest={}, backend_base_url="http://x")
 
-    assert len(client.conversational_ai.tools.created) == 4
+    assert len(client.conversational_ai.tools.created) == 5
     assert len(client.conversational_ai.agents.created) == 6
-    assert len(manifest["tools"]) == 4
+    assert len(manifest["tools"]) == 5
     assert len(manifest["agents"]) == 6
 
 
-def test_every_tool_sends_shared_secret_header():
+def test_every_webhook_tool_sends_shared_secret_header():
     config = load_vertical()
     client = FakeClient()
 
     upsert_all(client, config, manifest={}, backend_base_url="http://x")
 
-    assert client.conversational_ai.tools.created
-    for _tool_id, kwargs in client.conversational_ai.tools.created:
+    webhook_tools = [
+        kwargs for _tool_id, kwargs in client.conversational_ai.tools.created
+        if kwargs["request"].tool_config.type == "webhook"
+    ]
+    assert len(webhook_tools) == 4
+    for kwargs in webhook_tools:
         headers = kwargs["request"].tool_config.api_schema.request_headers
         assert headers == {"X-Tools-Secret": "test-secret"}
+
+
+def test_set_spec_field_created_as_client_tool():
+    config = load_vertical()
+    client = FakeClient()
+
+    upsert_all(client, config, manifest={}, backend_base_url="http://x")
+
+    by_name = {kwargs["request"].tool_config.name: kwargs["request"].tool_config
+               for _tool_id, kwargs in client.conversational_ai.tools.created}
+    tool = by_name["set_spec_field"]
+    assert tool.type == "client"
+    assert tool.expects_response is False
+    assert set(tool.parameters.properties.keys()) == set(config.spec_schema.keys())
+
+
+def test_only_estimator_gets_end_call_built_in_tool():
+    config = load_vertical()
+    client = FakeClient()
+
+    upsert_all(client, config, manifest={}, backend_base_url="http://x")
+
+    by_name = {kwargs["name"]: kwargs for _agent_id, kwargs in client.conversational_ai.agents.created}
+    estimator_prompt = by_name["estimator"]["conversation_config"].agent.prompt
+    assert estimator_prompt.built_in_tools.end_call.name == "end_call"
+    assert estimator_prompt.built_in_tools.end_call.params.system_tool_type == "end_call"
+    for other in ("negotiator", "stonewaller", "lowballer", "upseller", "firm"):
+        prompt = by_name[other]["conversation_config"].agent.prompt
+        assert prompt.built_in_tools is None
 
 
 def test_agents_pinned_to_pcm_16000_audio_format():
@@ -112,7 +145,7 @@ def test_second_run_with_manifest_updates_instead_of_creating():
     manifest2 = upsert_all(client2, config, manifest=manifest, backend_base_url="http://x")
 
     assert len(client2.conversational_ai.tools.created) == 0
-    assert len(client2.conversational_ai.tools.updated) == 4
+    assert len(client2.conversational_ai.tools.updated) == 5
     assert len(client2.conversational_ai.agents.created) == 0
     assert len(client2.conversational_ai.agents.updated) == 6
     assert manifest2["agents"] == manifest["agents"]
@@ -132,7 +165,7 @@ def test_lost_manifest_reuses_remote_match_by_name_instead_of_duplicating(tmp_pa
     assert manifest["tools"]["log_quote"] == "tool_remote_existing"
     assert manifest["agents"]["estimator"] == "agent_remote_existing"
     assert ("tool_remote_existing", ) not in [c[:1] for c in client.conversational_ai.tools.created]
-    assert len(client.conversational_ai.tools.created) == 3
+    assert len(client.conversational_ai.tools.created) == 4
     assert len(client.conversational_ai.agents.created) == 5
     assert manifest_path.exists()
     assert json.loads(manifest_path.read_text()) == manifest

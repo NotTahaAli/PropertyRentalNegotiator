@@ -20,6 +20,8 @@ class AgentDef:
     # K5's bridge suppresses the dealer leg's first_message per-conversation (Negotiator
     # opens); ElevenLabs rejects that override unless the agent explicitly allows it.
     allow_first_message_override: bool = False
+    # Grants the built-in end_call system tool (estimator hangs up after confirmation).
+    end_call: bool = False
 
 
 def build_dynamic_variable_names(config: VerticalConfig) -> list[str]:
@@ -107,6 +109,32 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
     return [log_quote, get_leverage, check_redflag, get_benchmark]
 
 
+_SPEC_JSON_TYPES = {"number": "number", "string": "string", "enum": "string", "bool": "boolean", "date": "string"}
+
+
+def build_client_tool_schemas(config: VerticalConfig) -> list[dict]:
+    properties = {}
+    for name, spec_field in config.spec_schema.items():
+        description = spec_field.prompt or name.replace("_", " ")
+        if spec_field.type == "enum" and spec_field.values:
+            description += " One of: " + ", ".join(spec_field.values) + "."
+        if spec_field.type == "date":
+            description += " Format YYYY-MM-DD."
+        properties[name] = {"type": _SPEC_JSON_TYPES[spec_field.type], "description": description}
+    return [
+        {
+            "type": "client",
+            "name": "set_spec_field",
+            "description": (
+                "Record spec fields in the client's form. Call immediately after every answer "
+                "with the field(s) just learned; send only fields the client actually stated."
+            ),
+            "parameters": {"type": "object", "properties": properties, "required": []},
+            "expects_response": False,
+        }
+    ]
+
+
 def build_agents(config: VerticalConfig) -> list[AgentDef]:
     agents = [
         AgentDef(
@@ -114,6 +142,8 @@ def build_agents(config: VerticalConfig) -> list[AgentDef]:
             prompt=config.estimator_prompt,
             first_message=config.first_messages["estimator"],
             llm=EXTRACTION_LLM,
+            tool_names=["set_spec_field"],
+            end_call=True,
         ),
         AgentDef(
             name="negotiator",

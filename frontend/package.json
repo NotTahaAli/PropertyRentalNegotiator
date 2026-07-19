@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@elevenlabs/react": "^1.10.1",
     "@supabase/supabase-js": "^2.110.7",
     "next": "16.2.10",
     "react": "19.2.4",

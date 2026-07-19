@@ -16,13 +16,6 @@ an item; delete resolved items instead of checking them off.
   backend, or a separate frontend call after `/specs` succeeds. K9 needs
   dealers to exist to show anything.
 
-- **Real `set_spec_field` tool-call event shape** —
-  `frontend/components/intake/VoiceIntake.tsx` guesses the Convai widget
-  event shape and falls back to a manual "Simulate voice completion"
-  button. Confirming the real shape needs a live conversation against the
-  deployed Estimator agent — same live-agent blocker as above, plus it
-  spends ElevenLabs conversation credits.
-
 - **`/calls/[spec_id]` route** — doesn't exist yet; K9 Call Center UI not
   started.
 
@@ -58,8 +51,23 @@ conversational-reply bug is not.
   tuned then anyway); don't re-attempt without a concrete new hypothesis —
   four separate live experiments already ruled out the cheap explanations.
 
+- **Live voice intake click-through** — voice path fully wired
+  (`set_spec_field` client tool + `end_call` live on the Estimator,
+  `VoiceIntake.tsx` on `@elevenlabs/react`), but nobody has run a real
+  mic conversation through it yet. Needs a human: start interview, answer,
+  watch fields fill, confirm, verify auto-hangup. Spends ~2 min of credits.
+
 ## Resolved
 
+- Voice intake wiring (was "Real `set_spec_field` tool-call event shape"):
+  widget dropped for `@elevenlabs/react` `ConversationProvider` +
+  `useConversation` (v1.10 requires the provider). Estimator now has a
+  `set_spec_field` client tool (typed param per spec field) and the
+  `end_call` system tool; prompt instructs both. `make_agents` upserts
+  client tools (no secret header) and sets `built_in_tools` — server
+  quirks found live: entries need an extra `"type": "system"`
+  discriminator, and the field must be omitted (not null) when unused.
+  Live-verified via agent/tool GET; mic click-through still pending (above).
 - K4 live wiring: `TOOLS_WEBHOOK_SECRET` set locally + on Render, live
   `make_agents` re-run done (header + `dealer_id` param registered). All 4
   deployed endpoints live-verified against real Supabase rows: no header →
