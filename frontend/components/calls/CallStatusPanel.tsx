@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import AudioPlayer from "./AudioPlayer";
 import CharacterCard from "./CharacterCard";
+import LiveAudio from "./LiveAudio";
 import QuoteChip from "./QuoteChip";
 import RoleplaySession from "./RoleplaySession";
 import StateBadge from "./StateBadge";
@@ -141,6 +142,9 @@ export default function CallStatusPanel({
           <p className="rec-pulse py-6 text-center text-sm text-text-secondary">
             Dialing {dealer.name}...
           </p>
+        )}
+        {state === "live" && callState.mode === "bridge" && callState.callId && (
+          <LiveAudio callId={callState.callId} />
         )}
         {(state === "live" || state === "done" || state === "failed") && (
           <TranscriptStream lines={transcript} highlightLine={highlightLine} />

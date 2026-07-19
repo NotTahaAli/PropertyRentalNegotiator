@@ -3,7 +3,6 @@ import base64
 import io
 import json
 import re
-import struct
 import time
 import wave
 from datetime import datetime, timezone
@@ -44,26 +43,24 @@ _DECLINE_PHRASES = ("not interested", "no deal", "not available", "already rente
 _CALLBACK_PHRASES = ("call you back", "call back", "callback")
 
 
-def mix_pcm(neg: bytes, dealer: bytes) -> bytes:
+def stereo_wav(neg: bytes, dealer: bytes) -> bytes:
     length = max(len(neg), len(dealer))
-    length += length % 2
+    length += length % SAMPLE_WIDTH
     neg = neg.ljust(length, b"\x00")
     dealer = dealer.ljust(length, b"\x00")
 
-    sample_count = length // 2
-    neg_samples = struct.unpack(f"<{sample_count}h", neg)
-    dealer_samples = struct.unpack(f"<{sample_count}h", dealer)
-
-    mixed = bytearray()
-    for a, b in zip(neg_samples, dealer_samples):
-        mixed += struct.pack("<h", max(-32768, min(32767, a + b)))
+    frames = bytearray(length * 2)
+    frames[0::4] = neg[0::2]
+    frames[1::4] = neg[1::2]
+    frames[2::4] = dealer[0::2]
+    frames[3::4] = dealer[1::2]
 
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
-        w.setnchannels(1)
+        w.setnchannels(2)  # left = negotiator, right = dealer
         w.setsampwidth(SAMPLE_WIDTH)
         w.setframerate(SAMPLE_RATE)
-        w.writeframes(bytes(mixed))
+        w.writeframes(bytes(frames))
     return buf.getvalue()
 
 
@@ -95,6 +92,22 @@ class CallSink:
         # monotonic ts of the last real audio chunk relayed *to* each leg;
         # silence_feeder pauses while fresher than SILENCE_CHUNK_SECONDS
         self.last_sent: dict[str, float] = {"negotiator": 0.0, "dealer": 0.0}
+        # time alignment for the stereo recording: on each turn switch both leg
+        # buffers are padded to a shared cursor so turns replay sequentially
+        self.start = time.monotonic()
+        self.last_leg: str | None = None
+
+    def add_audio(self, leg: str, chunk: bytes) -> None:
+        if leg != self.last_leg:
+            # TTS bursts arrive faster than real time, so the shared cursor is
+            # whichever is furthest along: either leg's audio, or the wall clock
+            # (which captures thinking gaps between turns)
+            elapsed = int((time.monotonic() - self.start) * SAMPLE_RATE) * SAMPLE_WIDTH
+            target = max(len(self.pcm["negotiator"]), len(self.pcm["dealer"]), elapsed)
+            for buf in self.pcm.values():
+                buf.extend(b"\x00" * (target - len(buf)))
+            self.last_leg = leg
+        self.pcm[leg] += chunk
 
 
 async def relay_loop(src_ws, dst_ws, leg: str, sink: CallSink) -> None:
@@ -105,10 +118,10 @@ async def relay_loop(src_ws, dst_ws, leg: str, sink: CallSink) -> None:
         if msg_type == "audio":
             audio_b64 = msg["audio_event"]["audio_base_64"]
             await dst_ws.send(json.dumps({"user_audio_chunk": audio_b64}))
-            sink.pcm[leg] += base64.b64decode(audio_b64)
+            sink.add_audio(leg, base64.b64decode(audio_b64))
             sink.last_audio_ts = time.monotonic()
             sink.last_sent[_other(leg)] = sink.last_audio_ts
-            live.publish(sink.call_id, audio_b64)
+            live.publish(sink.call_id, json.dumps({"leg": leg, "audio": audio_b64}))
 
         elif msg_type == "agent_response":
             text = msg["agent_response_event"]["agent_response"]
@@ -216,7 +229,7 @@ async def run_bridge(
     finally:
         peaks = {leg: max(scores, default=0.0) for leg, scores in sink.vad_scores.items()}
         print(f"call {call_id} vad peaks: {peaks}")
-        wav_bytes = mix_pcm(bytes(sink.pcm["negotiator"]), bytes(sink.pcm["dealer"]))
+        wav_bytes = stereo_wav(bytes(sink.pcm["negotiator"]), bytes(sink.pcm["dealer"]))
         recording_url = None
         try:
             recording_url = storage.upload_recording(call_id, wav_bytes)
