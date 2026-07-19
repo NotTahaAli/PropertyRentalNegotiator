@@ -8,7 +8,7 @@ import QuoteChip from "./QuoteChip";
 import RoleplaySession from "./RoleplaySession";
 import StateBadge from "./StateBadge";
 import TranscriptStream from "./TranscriptStream";
-import type { Dealer } from "@/lib/types";
+import type { Dealer, TranscriptLine } from "@/lib/types";
 import type { DealerCallState } from "@/lib/useCallCenter";
 
 const MAX_CALL_SECONDS = 180; // backend bridge hard cap
@@ -65,6 +65,16 @@ export default function CallStatusPanel({
   onHangUp,
   highlightLine,
 }: CallStatusPanelProps) {
+  // live transcript lines from the bridge stream; the authoritative
+  // transcript_json (numbered, deduped) replaces them once the call completes
+  const [liveLines, setLiveLines] = useState<TranscriptLine[]>([]);
+  const [linesCallId, setLinesCallId] = useState(callState.callId);
+  if (callState.callId !== linesCallId) {
+    // new call: reset during render (React's sanctioned prev-state pattern)
+    setLinesCallId(callState.callId);
+    setLiveLines([]);
+  }
+
   if (!dealer) {
     return (
       <div className="rounded-xl border border-border bg-surface p-6">
@@ -154,10 +164,18 @@ export default function CallStatusPanel({
           </p>
         )}
         {state === "live" && callState.mode === "bridge" && callState.callId && (
-          <LiveAudio callId={callState.callId} />
+          <LiveAudio
+            callId={callState.callId}
+            onLine={(leg, text) =>
+              setLiveLines((prev) => [...prev, { line: prev.length + 1, speaker: leg, text }])
+            }
+          />
         )}
         {(state === "live" || state === "done" || state === "failed") && (
-          <TranscriptStream lines={transcript} highlightLine={highlightLine} />
+          <TranscriptStream
+            lines={transcript.length > 0 ? transcript : liveLines}
+            highlightLine={highlightLine}
+          />
         )}
       </div>
 

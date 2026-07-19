@@ -14,7 +14,17 @@ const LEGS: Leg[] = ["negotiator", "dealer"];
 // ponytail: fixed pan, negotiator left / dealer right — matches the recording's channels
 const PAN: Record<Leg, number> = { negotiator: -0.7, dealer: 0.7 };
 
-export default function LiveAudio({ callId }: { callId: string }) {
+interface LiveAudioProps {
+  callId: string;
+  onLine?: (leg: Leg, text: string) => void; // live transcript line from the stream
+}
+
+export default function LiveAudio({ callId, onLine }: LiveAudioProps) {
+  // ref keeps the WS effect independent of the callback's identity
+  const onLineRef = useRef(onLine);
+  useEffect(() => {
+    onLineRef.current = onLine;
+  });
   const [muted, setMuted] = useState<Record<Leg, boolean>>({
     negotiator: false,
     dealer: false,
@@ -53,13 +63,18 @@ export default function LiveAudio({ callId }: { callId: string }) {
       ws.onclose = () => setConnected(false);
       ws.onmessage = (e) => {
         if (ctx.state === "suspended") void ctx.resume();
-        let leg: Leg, audio: string;
+        let leg: Leg, audio: string, text: string;
         try {
-          ({ leg, audio } = JSON.parse(e.data));
+          ({ leg, audio, text } = JSON.parse(e.data));
         } catch {
           return;
         }
         if (!gains[leg]) return;
+        if (text) {
+          onLineRef.current?.(leg, text);
+          return;
+        }
+        if (!audio) return;
         const bytes = Uint8Array.from(atob(audio), (c) => c.charCodeAt(0));
         const pcm = new Int16Array(bytes.buffer, 0, bytes.byteLength >> 1);
         if (pcm.length === 0) return;

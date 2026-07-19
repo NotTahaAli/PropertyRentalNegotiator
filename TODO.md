@@ -52,7 +52,9 @@ an item; delete resolved items instead of checking them off.
   confirm both voices audible live while the call runs, then replay the
   recording and confirm negotiator left / dealer right with no overlap
   (live playback now serializes both legs on one shared cursor — same
-  no-overlap guarantee as the recording), and that the dealer speaks first.
+  no-overlap guarantee as the recording), that the dealer speaks first,
+  and that transcript lines appear live during the call (streamed on the
+  same WS, replaced by the final numbered transcript at completion).
   If the browser blocks autoplay, clicking either mute button unlocks it.
   Same call also verifies the new half-duplex turn-taking gate
   (`bridge.TurnGate` + `turn_sender`): agents should no longer talk over

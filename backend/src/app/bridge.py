@@ -195,6 +195,10 @@ async def relay_loop(src_ws, leg: str, sink: CallSink, queue: asyncio.Queue) -> 
         elif msg_type == "agent_response":
             text = msg["agent_response_event"]["agent_response"]
             sink.events.append((leg, "agent_response", text))
+            # live transcript: agent_response only (user_transcript is the other
+            # leg's ASR of the same speech — would duplicate lines live; the final
+            # accumulate_transcript still uses it as the fallback at call end)
+            live.publish(sink.call_id, json.dumps({"leg": leg, "text": text}))
 
         elif msg_type == "user_transcript":
             text = msg["user_transcription_event"]["user_transcript"]

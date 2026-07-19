@@ -224,6 +224,30 @@ def test_relay_answers_ping_with_pong_on_same_leg():
     assert json.loads(src.sent[0]) == {"type": "pong", "event_id": 42}
 
 
+def test_relay_publishes_live_transcript_lines():
+    from app import live
+
+    src = FakeWebSocket(
+        [
+            json.dumps(
+                {"type": "agent_response", "agent_response_event": {"agent_response": "hi", "event_id": 1}}
+            )
+        ]
+    )
+    sink = bridge.CallSink(call_id="call-pub-t")
+
+    async def scenario():
+        queue = live.subscribe("call-pub-t")
+        try:
+            await bridge.relay_loop(src, "negotiator", sink, asyncio.Queue())
+            return queue.get_nowait()
+        finally:
+            live.unsubscribe("call-pub-t", queue)
+
+    msg = asyncio.run(scenario())
+    assert json.loads(msg) == {"leg": "negotiator", "text": "hi"}
+
+
 def test_relay_records_vad_scores_per_leg():
     src = FakeWebSocket(
         [
