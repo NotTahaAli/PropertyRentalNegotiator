@@ -69,7 +69,7 @@ export default function Home() {
                 href="/dashboard"
                 className="tr rounded-lg border border-border bg-surface px-6 py-3 font-display text-sm font-semibold text-text hover:border-border-hover hover:bg-elevated active:scale-[0.98]"
               >
-                Go to your specs
+                Go to your rental searches
               </Link>
               <span className="text-sm text-text-dim">3 steps · ~5 min</span>
             </div>

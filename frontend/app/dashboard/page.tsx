@@ -14,7 +14,7 @@ export default function DashboardPage() {
     let cancelled = false;
     listSpecsWithProgress()
       .then((e) => !cancelled && setEntries(e))
-      .catch(() => !cancelled && setError("Could not load your specs. Check the backend and refresh."));
+      .catch(() => !cancelled && setError("Could not load your rental searches. Check the backend and refresh."));
     return () => {
       cancelled = true;
     };
@@ -24,9 +24,9 @@ export default function DashboardPage() {
     <div className="anim-fade-up flex flex-1 flex-col">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-xs tracking-wider text-text-dim">Dashboard</p>
+          <p className="font-mono text-xs tracking-wider text-text-dim">Specs</p>
           <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-text sm:text-3xl">
-            Your specs
+            Your Rental Searches
           </h1>
           <p className="mt-1.5 max-w-lg text-sm text-text-secondary">
             Pick up where you left off, or start a new shop rental search.
@@ -46,11 +46,11 @@ export default function DashboardPage() {
         </p>
       )}
       {!entries && !error && (
-        <p className="rec-pulse py-12 text-center text-sm text-text-dim">Loading your specs...</p>
+        <p className="rec-pulse py-12 text-center text-sm text-text-dim">Loading your rental searches...</p>
       )}
       {entries && entries.length === 0 && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 py-24 text-center">
-          <p className="text-sm text-text-secondary">No specs yet — start your first shop rental search.</p>
+          <p className="text-sm text-text-secondary">No rental searches yet — start your first shop rental search.</p>
           <Link
             href="/intake"
             className="tr inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 font-display text-sm font-semibold text-primary-fg hover:opacity-90 active:scale-[0.98]"

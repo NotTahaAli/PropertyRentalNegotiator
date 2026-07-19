@@ -12,10 +12,10 @@ const NAV_LINK_CLASS =
   "tr shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-elevated hover:text-text";
 
 // Shared nav bar for every authenticated app layout (dashboard/calls/report/
-// intake) — logo + persistent Dashboard/New spec links always go somewhere
-// useful (these pages are all Protected, so a user is always logged in
-// here); an optional breadcrumb adds page-specific context (which spec,
-// which section) after them.
+// intake) — logo always returns to the public landing page; persistent
+// Specs/New spec links go to their pages (these pages are all Protected, so
+// a user is always logged in here); an optional breadcrumb adds
+// page-specific context (which spec, which section) after them.
 export default function AppNav({ crumbs = [], className = "" }: { crumbs?: Crumb[]; className?: string }) {
   return (
     <nav
@@ -23,13 +23,13 @@ export default function AppNav({ crumbs = [], className = "" }: { crumbs?: Crumb
     >
       <div className="flex min-w-0 items-center gap-1 sm:gap-3">
         <Link
-          href="/dashboard"
+          href="/"
           className="tr mr-1 shrink-0 font-display text-sm font-semibold tracking-tight text-text hover:text-accent sm:mr-3"
         >
           PropertyRentalNegotiator
         </Link>
         <Link href="/dashboard" className={NAV_LINK_CLASS}>
-          Dashboard
+          Specs
         </Link>
         <Link href="/intake" className={NAV_LINK_CLASS}>
           New spec
