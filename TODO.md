@@ -25,6 +25,15 @@ an item; delete resolved items instead of checking them off.
   event at `https://negotiator-backend.onrender.com/webhooks/post-call`
   (transcript + outcome written to the `calls` row).
 
+## Blocked: make_agents re-run (dealer-first flip)
+
+- **Negotiator agent needs the first_message override permission** — the
+  bridge now suppresses the negotiator's opener per call so the dealer
+  persona answers the phone first; persona agents no longer need their
+  override permission. Deployed agents carry the old config until
+  `uv run python -m app.make_agents` is re-run with live keys — until then
+  bridge calls fail on the unpermitted negotiator override.
+
 ## Blocked: K11 reflag has no UI caller
 
 - **`POST /specs/{id}/reflag` is curl-only** — endpoint is live (JWT +
@@ -41,7 +50,9 @@ an item; delete resolved items instead of checking them off.
   time-aligned stereo recording are unit-tested + build-clean but not yet
   heard in a browser. Needs one real bridge call on `/calls/[spec_id]`:
   confirm both voices audible live while the call runs, then replay the
-  recording and confirm negotiator left / dealer right with no overlap.
+  recording and confirm negotiator left / dealer right with no overlap
+  (live playback now serializes both legs on one shared cursor — same
+  no-overlap guarantee as the recording), and that the dealer speaks first.
   If the browser blocks autoplay, clicking either mute button unlocks it.
   Same call also verifies the new half-duplex turn-taking gate
   (`bridge.TurnGate` + `turn_sender`): agents should no longer talk over

@@ -225,21 +225,22 @@ def _connect(agent_id: str):
 
 def _negotiator_init(dynamic_variables: dict) -> str:
     return json.dumps(
-        {"type": "conversation_initiation_client_data", "dynamic_variables": dynamic_variables}
+        {
+            "type": "conversation_initiation_client_data",
+            "dynamic_variables": dynamic_variables,
+            # Dealer answers the phone first; negotiator's factory first_message is
+            # suppressed for this call only. Must be a single space, not "": an empty
+            # string never closes the agent's own turn (live-verified — it then never
+            # starts listening for user_audio_chunk, leaving the connection silent
+            # apart from pings).
+            "conversation_config_override": {"agent": {"first_message": " "}},
+        }
     )
 
 
 def _dealer_init() -> str:
     return json.dumps(
-        {
-            "type": "conversation_initiation_client_data",
-            "dynamic_variables": {},
-            # Negotiator opens; dealer's factory first_message is suppressed for this call
-            # only. Must be a single space, not "": an empty string never closes the
-            # agent's own turn (live-verified — it then never starts listening for
-            # user_audio_chunk, leaving the connection silent apart from pings).
-            "conversation_config_override": {"agent": {"first_message": " "}},
-        }
+        {"type": "conversation_initiation_client_data", "dynamic_variables": {}}
     )
 
 

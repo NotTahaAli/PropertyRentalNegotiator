@@ -35,8 +35,11 @@ export default function LiveAudio({ callId }: { callId: string }) {
     }
     gainsRef.current = gains;
 
-    // per-leg playback cursor so chunks of the same leg queue back-to-back
-    const nextAt: Record<Leg, number> = { negotiator: 0, dealer: 0 };
+    // one shared playback cursor: TTS bursts arrive faster than real time, so
+    // per-leg cursors let the next turn start while the previous one is still
+    // playing. Serializing both legs on a single cursor mirrors the recording's
+    // turn alignment — turns never overlap.
+    let nextAt = 0;
     let ws: WebSocket | null = null;
     let cancelled = false;
 
@@ -66,9 +69,9 @@ export default function LiveAudio({ callId }: { callId: string }) {
         const src = ctx.createBufferSource();
         src.buffer = buf;
         src.connect(gains[leg]);
-        const at = Math.max(ctx.currentTime, nextAt[leg]);
+        const at = Math.max(ctx.currentTime, nextAt);
         src.start(at);
-        nextAt[leg] = at + buf.duration;
+        nextAt = at + buf.duration;
       };
     })();
 

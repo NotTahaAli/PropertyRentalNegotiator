@@ -118,7 +118,9 @@ def test_agents_pinned_to_pcm_16000_audio_format():
         assert cc.asr.user_input_audio_format == "pcm_16000"
 
 
-def test_persona_agents_allow_first_message_override_negotiator_and_estimator_do_not():
+def test_negotiator_allows_first_message_override_personas_and_estimator_do_not():
+    # The bridge suppresses the negotiator's first_message per call so the dealer
+    # persona answers the phone first, like a real call.
     config = load_vertical()
     client = FakeClient()
 
@@ -128,11 +130,10 @@ def test_persona_agents_allow_first_message_override_negotiator_and_estimator_do
     for agent_id, kwargs in client.conversational_ai.agents.created:
         by_name[kwargs["name"]] = kwargs
 
-    for persona in ("stonewaller", "lowballer", "upseller", "firm"):
-        settings = by_name[persona]["platform_settings"]
-        assert settings.overrides.conversation_config_override.agent.first_message is True
+    settings = by_name["negotiator"]["platform_settings"]
+    assert settings.overrides.conversation_config_override.agent.first_message is True
 
-    for other in ("negotiator", "estimator"):
+    for other in ("estimator", "stonewaller", "lowballer", "upseller", "firm"):
         assert by_name[other].get("platform_settings") is None
 
 

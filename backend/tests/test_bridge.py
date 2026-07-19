@@ -630,13 +630,21 @@ def test_run_bridge_stops_early_and_finalizes_on_request_stop(monkeypatch):
     assert bridge.request_stop("call-stop") is False
 
 
-def test_dealer_init_suppresses_first_message_with_a_space_not_empty_string():
-    # Live-verified against the real ElevenLabs API: an empty-string first_message
-    # override never closes the agent's own turn (it never starts listening for
-    # user_audio_chunk afterward). A single space closes the turn normally.
-    msg = json.loads(bridge._dealer_init())
+def test_negotiator_init_suppresses_first_message_with_a_space_not_empty_string():
+    # Dealer answers the phone first. Live-verified against the real ElevenLabs API:
+    # an empty-string first_message override never closes the agent's own turn (it
+    # never starts listening for user_audio_chunk afterward). A single space closes
+    # the turn normally.
+    msg = json.loads(bridge._negotiator_init({"x": 1}))
 
     assert msg["conversation_config_override"]["agent"]["first_message"] == " "
+    assert msg["dynamic_variables"] == {"x": 1}
+
+
+def test_dealer_init_keeps_factory_first_message():
+    msg = json.loads(bridge._dealer_init())
+
+    assert "conversation_config_override" not in msg
 
 
 def test_run_bridge_respects_max_duration(monkeypatch):

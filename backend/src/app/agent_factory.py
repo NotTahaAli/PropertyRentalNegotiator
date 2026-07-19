@@ -17,8 +17,9 @@ class AgentDef:
     first_message: str
     llm: str
     tool_names: list[str] = field(default_factory=list)
-    # K5's bridge suppresses the dealer leg's first_message per-conversation (Negotiator
-    # opens); ElevenLabs rejects that override unless the agent explicitly allows it.
+    # K5's bridge suppresses the negotiator leg's first_message per-conversation (dealer
+    # answers the phone first, like a real call); ElevenLabs rejects that override
+    # unless the agent explicitly allows it.
     allow_first_message_override: bool = False
     # Grants the built-in end_call system tool (estimator hangs up after confirmation).
     end_call: bool = False
@@ -153,6 +154,7 @@ def build_agents(config: VerticalConfig) -> list[AgentDef]:
             first_message=config.first_messages["negotiator"],
             llm=EXTRACTION_LLM,
             tool_names=list(NEGOTIATOR_TOOL_NAMES),
+            allow_first_message_override=True,
         ),
     ]
     for persona in PERSONA_NAMES:
@@ -162,7 +164,6 @@ def build_agents(config: VerticalConfig) -> list[AgentDef]:
                 prompt=config.persona_prompts[persona],
                 first_message=config.first_messages[persona],
                 llm=PERSONA_LLM,
-                allow_first_message_override=True,
             )
         )
     return agents
