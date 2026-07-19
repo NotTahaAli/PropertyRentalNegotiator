@@ -171,6 +171,8 @@ export interface Quote {
   annual_increment_pct?: number | null;
   other_fees?: Record<string, number> | null;
   total_first_year: number;
+  total_term?: number | null;
+  available_from?: string | null;
   binding?: boolean;
   notes?: string | null;
   flagged?: boolean;
@@ -222,6 +224,9 @@ export interface ReportRow {
   // key and to match recommended_row_id; a dealer can produce several rows.
   row_id: string;
   rank: number | null; // null only for declined/no-quote dealers — never omitted, just unranked
+  total_term?: number | null;
+  available_from?: string | null;
+  meets_deadline: boolean | null;
   quote: Quote | null;
   round: number;
   outcome: CallOutcome;

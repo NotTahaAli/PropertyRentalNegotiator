@@ -3,7 +3,7 @@ import json
 import os
 import random
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -97,6 +97,7 @@ class QuoteCreate(BaseModel):
     notes: Optional[str] = None
     flagged: bool = False
     flag_reason: Optional[str] = None
+    available_from: Optional[str] = None
 
 
 def _total_first_year(body: QuoteCreate) -> float:
@@ -109,6 +110,21 @@ def _total_first_year(body: QuoteCreate) -> float:
         + other_fees_total
     )
 
+
+def _total_over_term(body: QuoteCreate, periods: float | None, growth_pct: float | None) -> float:
+    n = max(1, round(periods or 1))
+    g = (growth_pct or 0) / 100
+    rent = body.monthly_rent
+    maint = body.maintenance or 0
+    other = sum(body.other_fees.values()) if body.other_fees else 0
+    primary_recurring = sum(12 * rent * (1 + g) ** y for y in range(n))
+    return (
+        primary_recurring
+        + n * 12 * maint
+        + (body.advance_months or 0) * rent
+        + (body.commission or 0)
+        + other
+    )
 
 def _get_or_404(row: dict[str, Any] | None) -> dict[str, Any]:
     if row is None:
@@ -341,8 +357,11 @@ def _prior_call_summary(prior_calls: list[dict[str, Any]], quote: dict[str, Any]
             terms.append(f"{quote['annual_increment_pct']:g}% yearly increase")
         parts.append("They previously quoted: " + ", ".join(terms) + ".")
         parts.append(
-            "Do not ask them to repeat these terms. Acknowledge the quote you already "
-            "have and push for an improvement on it."
+            "Confirm with the dealer that this is still accurate before relying on it — "
+            "availability, rent, or terms may have changed since. If they confirm nothing "
+            "changed, log it again via log_quote so this call has its own record; if "
+            "anything changed, log the updated numbers instead. Either way, push for an "
+            "improvement on the current number."
         )
     else:
         parts.append("They did not give you a quote last time.")
@@ -459,14 +478,30 @@ def _dealer_dynamic_variables(
             "annual_increment_pct": round(random.uniform(*band["increment"])),
         }
         prior_note = "This is your first call with this caller."
-    return {
+    
+    deadline = spec_json.get(config.deadline_field) if config.deadline_field else None
+    dealer_available_from = prior_quote.get("available_from") if prior_quote and prior_quote.get("available_from") else deadline
+    if persona == "upseller" and not (prior_quote and prior_quote.get("available_from")) and deadline:
+        try:
+            d = datetime.strptime(str(deadline), "%Y-%m-%d")
+            dealer_available_from = (d + timedelta(days=42)).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+            
+    dealer_available_from = dealer_available_from or "soon"
+
+    out = {
         **terms,
         "prior_call_note": prior_note,
         "currency": config.currency,
         "location": spec_json.get("location") or "the area",
         "area_sqft": area if area is not None else "",
         "floor": spec_json.get("floor") or "",
+        "dealer_available_from": str(dealer_available_from),
     }
+    if deadline:
+        out["deadline"] = str(deadline)
+    return out
 
 
 @calls_router.post("/start")
@@ -641,8 +676,17 @@ async def stream_call(websocket: WebSocket, id: str, token: str = Query(...)) ->
 def create_quote(
     body: QuoteCreate, user_id: str = Depends(get_current_user_id)
 ) -> dict[str, Any]:
-    _require_call_owner(body.call_id, user_id)
-    row = {**body.model_dump(), "total_first_year": _total_first_year(body)}
+    call = _require_call_owner(body.call_id, user_id)
+    config = load_vertical()
+    spec = _get_or_404(crud.get_spec(call["spec_id"]))
+    spec_json = spec.get("spec_json") or {}
+    periods = spec_json.get(config.duration_field) if config.duration_field else None
+    growth = getattr(body, config.increment_field, None) if config.increment_field else None
+    row = {
+        **body.model_dump(),
+        "total_first_year": _total_first_year(body),
+        "total_term": _total_over_term(body, periods, growth),
+    }
     return crud.create_quote(row)
 
 

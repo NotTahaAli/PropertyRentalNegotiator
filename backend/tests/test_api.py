@@ -1271,7 +1271,14 @@ def test_prior_call_summary_recites_the_dealers_own_quote(monkeypatch):
 
     assert "151,000" in summary
     assert "2 months advance" in summary
-    assert "Do not ask them to repeat" in summary
+    # Old behavior told the agent never to re-ask ("Do not ask them to repeat
+    # these terms") — that let a quote go stale (shop no longer available,
+    # rent changed) without the agent ever finding out. It must now confirm
+    # validity every follow-up call and log_quote again either way, so a round
+    # that never re-touches a property doesn't silently drop its last known
+    # quote from view.
+    assert "confirm" in summary.lower()
+    assert "log_quote" in summary
     assert "Rent is 151000." in summary  # last-call tail is carried through
 
 
