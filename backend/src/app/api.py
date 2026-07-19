@@ -44,6 +44,10 @@ class DealerCreate(BaseModel):
     persona: str
     phone_label: Optional[str] = None
     source: Optional[str] = None
+    # Tavily-derived; commonly null — Tavily doesn't reliably return either.
+    phone: Optional[str] = None
+    rating: Optional[float] = None
+    rating_source: Optional[str] = None
 
 
 class DealerUpdate(BaseModel):
@@ -191,6 +195,30 @@ def reflag_spec(id: str, user_id: str = Depends(get_current_user_id)) -> dict[st
                 crud.update_quote(quote["id"], {"flagged": flagged, "flag_reason": reason})
                 updated += 1
     return {"checked": checked, "updated": updated}
+
+
+@specs_router.post("/{id}/dealers/discover")
+def discover_more_dealers(id: str, user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
+    """On-demand Tavily dealer search, triggered from the Call Center header.
+
+    Reuses discover_dealers() as-is; dedupes case-insensitively against dealers
+    already on this spec (discover_dealers() only dedupes within one Tavily batch).
+    """
+    spec = _require_spec_owner(id, user_id)
+    location = (spec.get("spec_json") or {}).get("location")
+    if not location:
+        return {"added": [], "skipped_duplicates": 0}
+    existing_names = {d["name"].strip().casefold() for d in crud.list_dealers(spec_id=id)}
+    added: list[dict[str, Any]] = []
+    skipped = 0
+    for dealer in discover_dealers(location):
+        key = dealer["name"].strip().casefold()
+        if key in existing_names:
+            skipped += 1
+            continue
+        existing_names.add(key)
+        added.append(crud.create_dealer({**dealer, "spec_id": id}))
+    return {"added": added, "skipped_duplicates": skipped}
 
 
 @dealers_router.post("")

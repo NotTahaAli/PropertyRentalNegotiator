@@ -7,8 +7,8 @@ from app import benchmark
 
 TAVILY_RESULTS = {
     "results": [
-        {"title": "Shop rents in Gulberg", "content": "Rates run 200-400 PKR per sqft."},
-        {"title": "Zameen averages", "content": "Commercial shops average PKR 300/sqft."},
+        {"title": "Shop rents in Gulberg", "url": "https://example.com/a", "content": "Rates run 200-400 PKR per sqft."},
+        {"title": "Zameen averages", "url": "https://zameen.com/b", "content": "Commercial shops average PKR 300/sqft."},
     ]
 }
 
@@ -43,15 +43,51 @@ def test_fetch_benchmark_happy_path(monkeypatch):
     monkeypatch.setattr(
         benchmark,
         "_client",
+        lambda: _fake_openai(
+            benchmark._Benchmark(per_sqft_low=200, per_sqft_high=400, source_url="https://example.com/a")
+        ),
+    )
+
+    result = benchmark.fetch_benchmark("Gulberg Lahore")
+
+    assert result == {
+        "per_sqft_low": 200.0,
+        "per_sqft_high": 400.0,
+        "source_url": "https://example.com/a",
+    }
+    assert "Gulberg Lahore" in captured["json"]["query"]
+    assert captured["headers"]["Authorization"] == "Bearer tvly-test"
+    assert captured["timeout"] == benchmark.TAVILY_TIMEOUT_S
+
+
+def test_fetch_benchmark_no_source_url_still_returns_numbers(monkeypatch):
+    monkeypatch.setattr(benchmark.httpx, "post", _fake_httpx_post())
+    monkeypatch.setattr(
+        benchmark,
+        "_client",
         lambda: _fake_openai(benchmark._Benchmark(per_sqft_low=200, per_sqft_high=400)),
     )
 
     result = benchmark.fetch_benchmark("Gulberg Lahore")
 
-    assert result == {"per_sqft_low": 200.0, "per_sqft_high": 400.0}
-    assert "Gulberg Lahore" in captured["json"]["query"]
-    assert captured["headers"]["Authorization"] == "Bearer tvly-test"
-    assert captured["timeout"] == benchmark.TAVILY_TIMEOUT_S
+    assert result == {"per_sqft_low": 200.0, "per_sqft_high": 400.0, "source_url": None}
+
+
+def test_fetch_benchmark_hallucinated_source_url_dropped(monkeypatch):
+    monkeypatch.setattr(benchmark.httpx, "post", _fake_httpx_post())
+    monkeypatch.setattr(
+        benchmark,
+        "_client",
+        lambda: _fake_openai(
+            benchmark._Benchmark(
+                per_sqft_low=200, per_sqft_high=400, source_url="https://not-in-results.example/"
+            )
+        ),
+    )
+
+    result = benchmark.fetch_benchmark("Gulberg Lahore")
+
+    assert result["source_url"] is None
 
 
 def test_fetch_benchmark_missing_key_skips_http(monkeypatch):
@@ -117,10 +153,12 @@ def test_fetch_benchmark_openai_error_returns_none(monkeypatch):
 # --- discover_dealers ----------------------------------------------------
 
 
-def _dealers_parsed(names_urls):
-    return benchmark._Dealers(
-        dealers=[benchmark._Dealer(name=n, url=u) for n, u in names_urls]
-    )
+def _dealers_parsed(names_urls, phones_ratings=None):
+    dealers = []
+    for i, (n, u) in enumerate(names_urls):
+        extra = (phones_ratings or {}).get(i, {})
+        dealers.append(benchmark._Dealer(name=n, url=u, **extra))
+    return benchmark._Dealers(dealers=dealers)
 
 
 def test_discover_dealers_happy_path(monkeypatch):
@@ -142,15 +180,56 @@ def test_discover_dealers_happy_path(monkeypatch):
             "persona": "human",
             "phone_label": "https://alpha.pk",
             "source": "tavily",
+            "phone": None,
+            "rating": None,
+            "rating_source": None,
         },
         {
             "name": "Beta Property",
             "persona": "human",
             "phone_label": "Gulberg Lahore",
             "source": "tavily",
+            "phone": None,
+            "rating": None,
+            "rating_source": None,
         },
     ]
     assert "Gulberg Lahore" in captured["json"]["query"]
+
+
+def test_discover_dealers_extracts_phone_and_rating(monkeypatch):
+    monkeypatch.setattr(benchmark.httpx, "post", _fake_httpx_post())
+    monkeypatch.setattr(
+        benchmark,
+        "_client",
+        lambda: _fake_openai(
+            _dealers_parsed(
+                [("Alpha Estate", "https://alpha.pk")],
+                {0: {"phone": "0300-1234567", "rating": 4.5, "rating_source": "Google"}},
+            )
+        ),
+    )
+
+    dealers = benchmark.discover_dealers("Gulberg Lahore")
+
+    assert dealers[0]["phone"] == "0300-1234567"
+    assert dealers[0]["rating"] == 4.5
+    assert dealers[0]["rating_source"] == "Google"
+
+
+def test_discover_dealers_rating_without_source_dropped(monkeypatch):
+    # a rating with no stated source is treated as absent, same as null
+    monkeypatch.setattr(benchmark.httpx, "post", _fake_httpx_post())
+    monkeypatch.setattr(
+        benchmark,
+        "_client",
+        lambda: _fake_openai(_dealers_parsed([("Alpha Estate", None)], {0: {"rating": 4.5}})),
+    )
+
+    dealers = benchmark.discover_dealers("Gulberg Lahore")
+
+    assert dealers[0]["rating"] == 4.5
+    assert dealers[0]["rating_source"] is None
 
 
 def test_discover_dealers_respects_limit(monkeypatch):

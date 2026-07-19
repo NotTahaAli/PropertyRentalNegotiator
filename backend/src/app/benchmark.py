@@ -28,11 +28,15 @@ def _client() -> OpenAI:
 class _Benchmark(BaseModel):
     per_sqft_low: Optional[float] = None
     per_sqft_high: Optional[float] = None
+    source_url: Optional[str] = None
 
 
 class _Dealer(BaseModel):
     name: str
     url: Optional[str] = None
+    phone: Optional[str] = None
+    rating: Optional[float] = None
+    rating_source: Optional[str] = None
 
 
 class _Dealers(BaseModel):
@@ -54,7 +58,10 @@ def _tavily_search(query: str, max_results: int = 5) -> list[dict]:
 
 
 def _snippets(results: list[dict]) -> str:
-    return "\n\n".join(f"{r.get('title', '')}\n{r.get('content', '')}" for r in results)
+    # url included so a citation-extraction prompt can echo one back verbatim
+    return "\n\n".join(
+        f"{r.get('title', '')}\n{r.get('url', '')}\n{r.get('content', '')}" for r in results
+    )
 
 
 def _extract(results: list[dict], system: str, text_format: type[BaseModel]):
@@ -83,7 +90,9 @@ def fetch_benchmark(location: str) -> Optional[dict]:
             results,
             "Extract the commercial shop rent range in PKR per square foot per month "
             f"for {location} from these search snippets. Only use numbers the snippets "
-            "explicitly state; leave a field null if unclear. Never guess.",
+            "explicitly state; leave a field null if unclear. Never guess. Also return "
+            "the url of the single snippet you drew these numbers from, verbatim from "
+            "the urls given above each snippet — never invent one.",
             _Benchmark,
         )
     except Exception:
@@ -92,7 +101,15 @@ def fetch_benchmark(location: str) -> Optional[dict]:
         return None
     if not 0 < parsed.per_sqft_low < parsed.per_sqft_high:
         return None
-    return {"per_sqft_low": parsed.per_sqft_low, "per_sqft_high": parsed.per_sqft_high}
+    # Only trust a url the model echoed back exactly from what it was given —
+    # never let it hand back an invented citation.
+    result_urls = {r["url"] for r in results if r.get("url")}
+    source_url = parsed.source_url if parsed.source_url in result_urls else None
+    return {
+        "per_sqft_low": parsed.per_sqft_low,
+        "per_sqft_high": parsed.per_sqft_high,
+        "source_url": source_url,
+    }
 
 
 def discover_dealers(location: str, limit: int = 4) -> list[dict]:
@@ -106,9 +123,12 @@ def discover_dealers(location: str, limit: int = 4) -> list[dict]:
             results,
             "Extract real property dealer / estate agency business names mentioned in "
             f"these search snippets for {location}. Include a website URL only when a "
-            "snippet clearly ties it to that business. Skip property portals and "
-            "marketplaces (Zameen, OLX, Graana), business directories, news articles, "
-            "listicles, and generic sites. List each business once. Never invent names.",
+            "snippet clearly ties it to that business. Also extract a phone number and "
+            "a rating out of 5 for that business only when a snippet explicitly states "
+            "one, plus which site the rating came from (e.g. Google); never estimate or "
+            "invent either, leave them null. Skip property portals and marketplaces "
+            "(Zameen, OLX, Graana), business directories, news articles, listicles, and "
+            "generic sites. List each business once. Never invent names.",
             _Dealers,
         )
     except Exception:
@@ -124,6 +144,9 @@ def discover_dealers(location: str, limit: int = 4) -> list[dict]:
             "persona": "human",
             "phone_label": d.url or location,
             "source": "tavily",
+            "phone": d.phone,
+            "rating": d.rating,
+            "rating_source": d.rating_source if d.rating is not None else None,
         }
         for d in list(unique.values())[:limit]
     ]

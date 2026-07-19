@@ -964,6 +964,76 @@ def test_reflag_flags_explicitly_non_binding_quote(monkeypatch):
     assert "written quote" in fields["flag_reason"]
 
 
+# --- POST /specs/{id}/dealers/discover -----------------------------------
+
+
+def test_discover_more_dealers_requires_auth():
+    response = client.post("/specs/s1/dealers/discover")
+
+    assert response.status_code == 401
+
+
+def test_discover_more_dealers_404s_for_non_owner(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    _as(USER_B)
+
+    response = client.post("/specs/s1/dealers/discover")
+
+    assert response.status_code == 404
+
+
+def test_discover_more_dealers_skips_search_without_location(monkeypatch):
+    monkeypatch.setattr(
+        crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A, "spec_json": {}}
+    )
+    monkeypatch.setattr(
+        api, "discover_dealers", lambda location: pytest.fail("searched without location")
+    )
+    _as(USER_A)
+
+    response = client.post("/specs/s1/dealers/discover")
+
+    assert response.status_code == 200
+    assert response.json() == {"added": [], "skipped_duplicates": 0}
+
+
+def test_discover_more_dealers_inserts_new_and_dedupes_existing(monkeypatch):
+    monkeypatch.setattr(
+        crud,
+        "get_spec",
+        lambda id: {"id": "s1", "user_id": USER_A, "spec_json": {"location": "Gulberg"}},
+    )
+    monkeypatch.setattr(
+        crud,
+        "list_dealers",
+        lambda **f: [{"id": "d0", "name": "Alpha Estate", "persona": "human"}],
+    )
+    monkeypatch.setattr(
+        api,
+        "discover_dealers",
+        lambda location: [
+            {"name": "alpha estate", "persona": "human", "phone_label": "x", "source": "tavily"},
+            {"name": "Beta Property", "persona": "human", "phone_label": "y", "source": "tavily"},
+        ],
+    )
+    created = []
+
+    def fake_create_dealer(row):
+        created.append(row)
+        return {"id": f"d{len(created)}", **row}
+
+    monkeypatch.setattr(crud, "create_dealer", fake_create_dealer)
+    _as(USER_A)
+
+    response = client.post("/specs/s1/dealers/discover")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["skipped_duplicates"] == 1  # "alpha estate" already exists, case-insensitive
+    assert [d["name"] for d in body["added"]] == ["Beta Property"]
+    assert created == [{"name": "Beta Property", "persona": "human", "phone_label": "y", "source": "tavily", "spec_id": "s1"}]
+
+
 def test_recording_endpoint_owner_only(monkeypatch):
     monkeypatch.setattr(
         crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1", "recording_url": "c1.wav"}
