@@ -33,16 +33,19 @@ an item; delete resolved items instead of checking them off.
   (fixes the infinite goodbye loop after the 3:00 cap was removed). Live
   bridge call re-check pending to confirm the negotiator actually hangs up.
 
-## Blocked: K11 reflag has no UI caller
-
-- **`POST /specs/{id}/reflag` is curl-only** — endpoint is live (JWT +
-  ownership, re-runs `evaluate_red_flags` on all of a spec's quotes, may
-  unflag) but nothing in the frontend calls it. Natural caller is the K10
-  report page ("Re-check flags" before ranking) — wire a `lib/api.ts`
-  wrapper + button there when K10 exists. Until then:
-  `curl -X POST -H "Authorization: Bearer $JWT" .../specs/$SPEC_ID/reflag`.
-
 ## Open: manual click-throughs
+
+- **Report page real-mode check** — `GET /report/{spec_id}` now exists and the
+  page calls it for real, but it has only ever rendered `MOCK_REPORT` in a
+  browser. Needs one spec with completed calls: confirm ranking order matches
+  `total_first_year`, a flagged quote sorts last rather than #1, "Re-check
+  flags" round-trips, and a citation click lands on the right dealer's
+  transcript line. **Watch the citation mapping specifically:** `call_number`
+  is now assigned by the backend (spec's calls ordered by `started_at`) while
+  the mock still numbers by `MOCK_DEALERS` index — they agree by construction
+  in the demo but are different mechanisms, so a citation landing on the wrong
+  dealer in real mode points here first.
+
 
 - **Live-audio player + stereo recording browser check** — `LiveAudio.tsx`
   (leg-tagged WS stream, Web Audio, panned L/R, per-leg mute) and the new
@@ -69,6 +72,31 @@ an item; delete resolved items instead of checking them off.
   watch fields fill, confirm, verify auto-hangup. Spends ~2 min of credits.
 
 ## Resolved
+
+- **K10 report generator** — `GET /report/{spec_id}` built
+  (`backend/src/app/report.py`, `backend/tests/test_report.py`, 20 tests). The
+  report UI had been shipping against `MOCK_REPORT` with nothing behind it.
+  Flagged quotes sort last and can never rank #1 but are never hidden;
+  `recommendation_text` is templated rather than model-written, on the same
+  honesty-guardrail reasoning as `get_leverage`.
+- **Red-flag false positive** — `no_written_quote` fired on `binding=None`
+  because the rule checked `not binding` and `QuoteCreate.binding` defaulted to
+  `False`. Every quote logged without the field came back flagged, so
+  above-market dealers wore the same badge as suspiciously-cheap ones, which
+  inverts what the badge means to a user. `binding` is now tri-state and the
+  rule fires only on explicit `False`. Safe because the `log_quote` tool schema
+  already lists `binding` as required, so the agent path always sets it. Three
+  existing tests encoded the old behaviour and were rewritten, not deleted.
+- **CORS / boot fragility** — `main.py` read `os.environ["CORS_ORIGINS"]`, so a
+  missing env var was an import-time `KeyError` that took the whole service down
+  rather than serving with a default. Now defaults to localhost and adds an
+  `allow_origin_regex` for `*.vercel.app`, since preview deploys get a new
+  subdomain per push and can't be enumerated in an allowlist. `render.yaml` was
+  also missing `CORS_ORIGINS`, `OPENAI_API_KEY`, `TAVILY_API_KEY` and
+  `ELEVENLABS_WEBHOOK_SECRET` entirely — all four now declared there, so they
+  stop being things somebody has to remember in the Render dashboard.
+- **K11 reflag had no UI caller** — "Re-check flags" button now on the report
+  page (`lib/api.ts` `reflagSpec` + `app/report/[spec_id]/page.tsx`).
 
 - K7 live verification: `TAVILY_API_KEY` now set locally + on Render,
   live-verified 2026-07-19 (probe user `k7-live-verify@gmail.com`, test

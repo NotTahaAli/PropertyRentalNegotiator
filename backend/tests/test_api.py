@@ -815,14 +815,40 @@ def test_reflag_skips_unchanged_quotes(monkeypatch):
 
 
 def test_reflag_none_fields_and_no_benchmark(monkeypatch):
-    # fallback benchmark path + None advance/binding: no_written_quote fires
-    updates = _reflag_fixture(
+    # Fallback benchmark path with an above-market rent and *unknown* binding.
+    # This used to flag ("no written quote" fired on None), which is exactly the
+    # false positive that put above-market dealers under the red-flag badge.
+    _reflag_fixture(
         monkeypatch,
         {
             "id": "q1",
             "monthly_rent": 200000,
             "advance_months": None,
             "binding": None,
+            "flagged": False,
+            "flag_reason": None,
+        },
+        spec={"id": "s1", "user_id": USER_A, "spec_json": {"area_sqft": 900}, "benchmark_json": None},
+    )
+    monkeypatch.setattr(
+        crud, "update_quote", lambda *a: pytest.fail("flagged a quote with unknown binding")
+    )
+    _as(USER_A)
+
+    response = client.post("/specs/s1/reflag")
+
+    assert response.status_code == 200
+    assert response.json() == {"checked": 1, "updated": 0}
+
+
+def test_reflag_flags_explicitly_non_binding_quote(monkeypatch):
+    updates = _reflag_fixture(
+        monkeypatch,
+        {
+            "id": "q1",
+            "monthly_rent": 200000,
+            "advance_months": None,
+            "binding": False,
             "flagged": False,
             "flag_reason": None,
         },

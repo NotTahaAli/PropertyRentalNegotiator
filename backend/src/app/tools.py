@@ -69,7 +69,13 @@ def evaluate_red_flags(
                 )
                 confirm = confirm or rule.action == "confirm_then_flag"
         elif rule.rule == "no_written_quote":
-            if not binding:
+            # `binding is False` only — not `not binding`. The old check fired on
+            # None too, which conflates "the dealer refused a written quote" with
+            # "nobody asked yet", and flagged every quote logged without the
+            # field. That is what made an *above*-market dealer come back flagged.
+            # The log_quote tool schema requires `binding`, so the agent path
+            # always supplies it; unknown stays unjudged.
+            if binding is False:
                 reasons.append("dealer has not confirmed a written quote")
                 confirm = confirm or rule.action == "confirm_then_flag"
         elif rule.rule == "advance_months_gt":

@@ -206,7 +206,24 @@ export async function getReport(specId: string): Promise<Report> {
     await new Promise((r) => setTimeout(r, 500));
     return MOCK_REPORT;
   }
-  // K10 report generation isn't built on the backend yet — this 404s until
-  // it ships; the report page surfaces that as a clean "not available" state.
   return getJson(`/report/${encodeURIComponent(specId)}`);
+}
+
+/** Re-runs the red-flag rules over every quote of a spec against the current
+ * benchmark. May unflag: quotes judged on a fallback benchmark, or flagged by a
+ * client-supplied value, get corrected. Called before ranking so the report
+ * never orders rows on a stale verdict. */
+export async function reflagSpec(
+  specId: string
+): Promise<{ checked: number; updated: number }> {
+  if (USE_MOCKS) {
+    await new Promise((r) => setTimeout(r, 400));
+    return { checked: MOCK_REPORT.rows.length, updated: 0 };
+  }
+  const r = await fetch(`${BASE}/specs/${encodeURIComponent(specId)}/reflag`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  if (!r.ok) throw new Error(`reflag failed: ${r.status}`);
+  return r.json();
 }

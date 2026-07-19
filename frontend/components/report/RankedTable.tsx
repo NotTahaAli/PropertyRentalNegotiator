@@ -6,7 +6,7 @@ import type { ReportRow } from "@/lib/types";
 interface RankedTableProps {
   specId: string;
   rows: ReportRow[];
-  recommendedDealerId: string;
+  recommendedDealerId: string | null; // null when no dealer produced a quote
 }
 
 export default function RankedTable({ specId, rows, recommendedDealerId }: RankedTableProps) {
