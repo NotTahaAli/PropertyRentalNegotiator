@@ -36,7 +36,7 @@ export default function DashboardPage() {
           href="/intake"
           className="tr inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 font-display text-sm font-semibold text-primary-fg hover:opacity-90 active:scale-[0.98]"
         >
-          New spec
+          New Search
         </Link>
       </div>
 
