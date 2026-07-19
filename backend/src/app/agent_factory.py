@@ -176,6 +176,9 @@ def build_agents(config: VerticalConfig) -> list[AgentDef]:
                 prompt=config.persona_prompts[persona],
                 first_message=config.first_messages[persona],
                 llm=PERSONA_LLM,
+                # Persona hangs up when its own goodbye line is done, instead of
+                # relying solely on the negotiator to end the call.
+                end_call=True,
             )
         )
     return agents
