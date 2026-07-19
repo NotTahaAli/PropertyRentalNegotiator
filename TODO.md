@@ -14,8 +14,8 @@ an item; delete resolved items instead of checking them off.
   them. Wire the same `@elevenlabs/react` `ConversationProvider` +
   `useConversation` pattern K8's `VoiceIntake.tsx` proved, passing the
   dynamic variables at session start. This is the K5-fallback demo path —
-  the demo must never depend on the bridge working, so this gap blocks the
-  closed-loop demo while the K5 persona-reply bug stays open.
+  the demo must never depend on the bridge working, so this gap still
+  matters even now that the bridge persona-reply bug is fixed.
 
 - **`make_agents` re-run needed for K4/K7 prompt+schema changes** —
   `log_quote` now requires `binding` in its tool schema, and the negotiator
@@ -54,46 +54,7 @@ an item; delete resolved items instead of checking them off.
   wrapper + button there when K10 exists. Until then:
   `curl -X POST -H "Authorization: Bearer $JWT" .../specs/$SPEC_ID/reflag`.
 
-## Blocked: K5 dealer persona doesn't verbally reply to relayed audio
-
-Live-tested against real ElevenLabs agents. Connection-health bug is fixed;
-conversational-reply bug is not.
-
-- **Fixed along the way** (three real bugs live testing caught, unit tests
-  couldn't): `start_call` needed `async def` (bare `asyncio.create_task` has
-  no event loop in FastAPI's sync-endpoint threadpool); dealer personas
-  needed `platform_settings.overrides` enabling the `first_message` override
-  (ElevenLabs rejects unpermitted per-conversation overrides); the suppressed
-  `first_message` must be a single space `" "`, not `""` — empty string
-  never closes the agent's own turn, so it never starts listening for
-  `user_audio_chunk` at all. All three fixed and regression-tested.
-
-- **Still open:** even with the connection verified healthy (dealer leg
-  pings normally, its own `" "` turn is recorded), the `firm` persona never
-  produced a spoken reply to the Negotiator's relayed audio in a patient
-  30-second live probe. Isolated via separate live experiments: text
-  `user_message` to the same suppressed-init agent replies instantly and
-  correctly (rules out prompt/LLM/turn-state); real-time-paced small-frame
-  audio relay instead of one large burst made no difference (rules out
-  chunk-size/pacing); swapping WebSocket connection order made no difference
-  (rules out connection order); swapping which agent speaks first vs waits
-  made no difference (rules out agent-specific config). Leading theory:
-  ElevenLabs' server-side VAD/ASR may not process relayed TTS-output audio
-  the same way it processes real microphone input, even though both report
-  `pcm_16000`. Their docs don't cover ASR-input format specifics enough to
-  confirm — would need ElevenLabs support or substantially more live-credit
-  spend on trial-and-error. Revisit after K4 lands (persona prompts get
-  tuned then anyway); don't re-attempt without a concrete new hypothesis —
-  four separate live experiments already ruled out the cheap explanations.
-  **New decisive diagnostic now wired (no credit spent yet):** the
-  conversation WebSocket emits `vad_score` server events — the server-side
-  voice-activity score of the audio *sent to* that leg. `bridge.relay_loop`
-  now records them per leg and `run_bridge` prints one
-  `call <id> vad peaks: {...}` line at call end. On the next live bridge
-  probe, read that line in Render logs: dealer-leg peak ≈ 0 confirms the
-  VAD/relayed-TTS-audio theory (then escalate to ElevenLabs support with
-  that evidence); a high peak refutes it and moves suspicion downstream to
-  ASR/turn-taking.
+## Open: manual click-throughs
 
 - **Live voice intake click-through** — voice path fully wired
   (`set_spec_field` client tool + `end_call` live on the Estimator,
@@ -103,6 +64,23 @@ conversational-reply bug is not.
 
 ## Resolved
 
+- K5 dealer-persona-never-replies bug: root cause was missing trailing
+  silence. ElevenLabs' server-side turn detection only commits a user turn
+  after it hears silence *audio* following speech; the bridge relayed TTS
+  bursts then went quiet, so the receiving agent's ASR never finalized the
+  utterance (no `user_transcript`, no reply — and no `vad_score` events at
+  all, so the earlier vad-peaks diagnostic was moot). Proven by a
+  discriminating single-leg live probe: identical speech burst got zero
+  response without trailing silence, full transcript + reply with it. Fix:
+  `bridge.silence_feeder` streams 250ms silence chunks to each leg whenever
+  no real audio was relayed to it in the last 250ms (open-mic emulation);
+  feeder audio is never recorded/published and doesn't reset the silence
+  watchdog. Live-verified end-to-end: real 75s bridge call produced a
+  20-line multi-turn negotiation (lowballer quoted rent/advance/commission,
+  negotiator enforced the written-agreement rule and declined). Earlier
+  connection-health fixes (async `start_call`, `platform_settings.overrides`
+  for `first_message`, suppressed first message `" "` not `""`) remain in
+  place and regression-tested.
 - Voice intake wiring (was "Real `set_spec_field` tool-call event shape"):
   widget dropped for `@elevenlabs/react` `ConversationProvider` +
   `useConversation` (v1.10 requires the provider). Estimator now has a

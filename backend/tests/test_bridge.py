@@ -189,6 +189,96 @@ def test_relay_records_vad_scores_per_leg():
     assert dst.sent == []
 
 
+def test_relay_marks_destination_last_sent():
+    audio_b64 = base64.b64encode(b"\x01\x00\x02\x00").decode()
+    src = FakeWebSocket(
+        [json.dumps({"type": "audio", "audio_event": {"audio_base_64": audio_b64, "event_id": 1}})]
+    )
+    dst = FakeWebSocket()
+    sink = bridge.CallSink(call_id="call-1")
+    assert sink.last_sent == {"negotiator": 0.0, "dealer": 0.0}
+
+    asyncio.run(bridge.relay_loop(src, dst, "negotiator", sink))
+
+    assert sink.last_sent["dealer"] > 0.0
+    assert sink.last_sent["negotiator"] == 0.0
+
+
+def _run_feeder_briefly(ws, leg, sink, seconds):
+    async def scenario():
+        task = asyncio.ensure_future(bridge.silence_feeder(ws, leg, sink))
+        await asyncio.sleep(seconds)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(scenario())
+
+
+def test_silence_feeder_streams_silence_when_leg_is_idle():
+    ws = FakeWebSocket()
+    sink = bridge.CallSink(call_id="call-1")
+
+    _run_feeder_briefly(ws, "dealer", sink, seconds=0.6)
+
+    assert len(ws.sent) >= 2
+    chunk = json.loads(ws.sent[0])["user_audio_chunk"]
+    assert base64.b64decode(chunk) == b"\x00" * len(base64.b64decode(chunk))
+    # silence is filler for the server's turn detector, not call audio
+    assert bytes(sink.pcm["dealer"]) == b""
+    assert bytes(sink.pcm["negotiator"]) == b""
+
+
+def test_silence_feeder_pauses_while_real_audio_flows():
+    import time as _time
+
+    ws = FakeWebSocket()
+    sink = bridge.CallSink(call_id="call-1")
+
+    async def scenario():
+        task = asyncio.ensure_future(bridge.silence_feeder(ws, "dealer", sink))
+        for _ in range(6):
+            sink.last_sent["dealer"] = _time.monotonic()
+            await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    asyncio.run(scenario())
+
+    assert ws.sent == []
+
+
+def test_silence_feeder_does_not_reset_silence_watchdog():
+    ws = FakeWebSocket()
+    sink = bridge.CallSink(call_id="call-1")
+    before = sink.last_audio_ts
+
+    _run_feeder_briefly(ws, "dealer", sink, seconds=0.4)
+
+    assert sink.last_audio_ts == before
+
+
+def test_silence_feeder_stops_when_socket_closes():
+    import websockets
+
+    class ClosedWebSocket(FakeWebSocket):
+        async def send(self, message):
+            raise websockets.exceptions.ConnectionClosedOK(None, None)
+
+    ws = ClosedWebSocket()
+    sink = bridge.CallSink(call_id="call-1")
+
+    async def scenario():
+        await asyncio.wait_for(bridge.silence_feeder(ws, "dealer", sink), timeout=2)
+
+    asyncio.run(scenario())  # returns instead of raising
+
+
 def test_relay_records_agent_response_and_swaps_speaker_for_user_transcript():
     src = FakeWebSocket(
         [

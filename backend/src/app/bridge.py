@@ -24,6 +24,18 @@ SAMPLE_WIDTH = 2  # bytes per 16-bit PCM sample
 MAX_CALL_SECONDS = 180
 SILENCE_SECONDS = 15
 
+# ElevenLabs' server-side turn detection only commits a user turn after it hears
+# silence *audio* following speech — a relay that forwards TTS bursts and then
+# goes quiet never ends the turn, so the receiving agent never replies
+# (live-verified: burst-only got no vad_score/user_transcript at all; the same
+# burst followed by streamed silence chunks got a transcript and a reply).
+# Feed each leg continuous silence whenever no real audio is being relayed to it,
+# like an open microphone would.
+SILENCE_CHUNK_SECONDS = 0.25
+_SILENCE_CHUNK_B64 = base64.b64encode(
+    b"\x00" * int(SAMPLE_RATE * SAMPLE_WIDTH * SILENCE_CHUNK_SECONDS)
+).decode()
+
 # ponytail: 4+ digit number (commas stripped) = money in PKR; misses spelled-out
 # amounts ("eighty five thousand") — webhook/quotes table is the ground truth anyway.
 _QUOTE_NUMBER_RE = re.compile(r"\d{4,}")
@@ -79,6 +91,9 @@ class CallSink:
         # Dealer-leg peak ~0 would confirm the relayed-audio/VAD theory (TODO.md).
         self.vad_scores: dict[str, list[float]] = {"negotiator": [], "dealer": []}
         self.last_audio_ts = time.monotonic()
+        # monotonic ts of the last real audio chunk relayed *to* each leg;
+        # silence_feeder pauses while fresher than SILENCE_CHUNK_SECONDS
+        self.last_sent: dict[str, float] = {"negotiator": 0.0, "dealer": 0.0}
 
 
 async def relay_loop(src_ws, dst_ws, leg: str, sink: CallSink) -> None:
@@ -91,6 +106,7 @@ async def relay_loop(src_ws, dst_ws, leg: str, sink: CallSink) -> None:
             await dst_ws.send(json.dumps({"user_audio_chunk": audio_b64}))
             sink.pcm[leg] += base64.b64decode(audio_b64)
             sink.last_audio_ts = time.monotonic()
+            sink.last_sent[_other(leg)] = sink.last_audio_ts
             live.publish(sink.call_id, audio_b64)
 
         elif msg_type == "agent_response":
@@ -144,6 +160,17 @@ def _dealer_init() -> str:
     )
 
 
+async def silence_feeder(dst_ws, dst_leg: str, sink: CallSink) -> None:
+    while True:
+        await asyncio.sleep(SILENCE_CHUNK_SECONDS)
+        if time.monotonic() - sink.last_sent[dst_leg] < SILENCE_CHUNK_SECONDS:
+            continue
+        try:
+            await dst_ws.send(json.dumps({"user_audio_chunk": _SILENCE_CHUNK_B64}))
+        except websockets.exceptions.ConnectionClosed:
+            return
+
+
 async def _silence_watchdog(sink: CallSink) -> None:
     while True:
         await asyncio.sleep(1)
@@ -169,6 +196,8 @@ async def run_bridge(
             tasks = {
                 asyncio.ensure_future(relay_loop(neg_ws, deal_ws, "negotiator", sink)),
                 asyncio.ensure_future(relay_loop(deal_ws, neg_ws, "dealer", sink)),
+                asyncio.ensure_future(silence_feeder(deal_ws, "dealer", sink)),
+                asyncio.ensure_future(silence_feeder(neg_ws, "negotiator", sink)),
                 asyncio.ensure_future(_silence_watchdog(sink)),
             }
             done, pending = await asyncio.wait(
