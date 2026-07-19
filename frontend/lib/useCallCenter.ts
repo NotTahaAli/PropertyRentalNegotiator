@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { endCall, getCall, getRecordingUrl, listDealers, listQuotes, startCall, updateDealer } from "./api";
+import { endCall, getCall, getRecordingUrl, listCalls, listDealers, listQuotes, startCall, updateDealer } from "./api";
 import {
   MOCK_OUTCOMES,
   MOCK_QUOTES,
@@ -10,7 +10,7 @@ import {
   MOCK_TRANSCRIPTS_ROUND2,
   mockRecordingUrl,
 } from "./mocks";
-import type { CallOutcome, Dealer, Persona, Quote, TranscriptLine, UiCallState } from "./types";
+import type { CallOutcome, CallRow, Dealer, Persona, Quote, TranscriptLine, UiCallState } from "./types";
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
@@ -68,6 +68,16 @@ export function useCallCenter(specId: string) {
 
   const patch = useCallback((dealerId: string, p: Partial<DealerCallState>) => {
     setCalls((prev) => ({ ...prev, [dealerId]: { ...(prev[dealerId] ?? IDLE), ...p } }));
+  }, []);
+
+  // only overwrites a dealer still at IDLE — never clobbers a call this
+  // session already kicked off while backend history is still loading.
+  const hydratePatch = useCallback((dealerId: string, p: Partial<DealerCallState>) => {
+    setCalls((prev) => {
+      const cur = prev[dealerId] ?? IDLE;
+      if (cur.state !== "idle") return prev;
+      return { ...prev, [dealerId]: { ...cur, ...p } };
+    });
   }, []);
 
   const addTimer = useCallback((dealerId: string, id: ReturnType<typeof setInterval>) => {
@@ -162,6 +172,68 @@ export function useCallCenter(specId: string) {
     },
     [patch, addTimer, clearTimers]
   );
+
+  // hydrate dealer states from real call history on load — without this the
+  // calls page always shows every dealer IDLE on a fresh mount/reload, even
+  // when the dashboard (which reads the same /calls endpoint) shows calls
+  // already done. Mirrors dashboard.ts's deriveProgress: latest call per
+  // dealer by round.
+  const hydratedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dealers || USE_MOCKS) return;
+    if (hydratedFor.current === specId) return;
+    hydratedFor.current = specId;
+    let cancelled = false;
+    (async () => {
+      let rows: CallRow[];
+      try {
+        rows = await listCalls(specId);
+      } catch {
+        return;
+      }
+      if (cancelled) return;
+      const latestByDealer = new Map<string, CallRow>();
+      for (const c of rows) {
+        const prev = latestByDealer.get(c.dealer_id);
+        if (!prev || c.round >= prev.round) latestByDealer.set(c.dealer_id, c);
+      }
+      for (const dealer of dealers) {
+        const c = latestByDealer.get(dealer.id);
+        if (!c) continue;
+        if (c.status === "running") {
+          hydratePatch(dealer.id, {
+            state: "live",
+            round: c.round,
+            callId: c.id,
+            transcript: c.transcript_json ?? [],
+          });
+          pollUntilDone(dealer.id, c.id);
+          continue;
+        }
+        let quote: Quote | null = null;
+        let recordingUrl: string | null = null;
+        try {
+          quote = (await listQuotes(c.id))[0] ?? null;
+        } catch {}
+        try {
+          recordingUrl = await getRecordingUrl(c.id);
+        } catch {}
+        if (cancelled) return;
+        hydratePatch(dealer.id, {
+          state: c.status === "failed" ? "failed" : "done",
+          round: c.round,
+          callId: c.id,
+          transcript: c.transcript_json ?? [],
+          outcome: c.outcome ?? (c.status === "failed" ? "failed" : "callback"),
+          quote,
+          recordingUrl,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dealers, specId, hydratePatch, pollUntilDone]);
 
   const runRealCall = useCallback(
     async (dealer: Dealer, round: number) => {
