@@ -53,6 +53,7 @@ interface CallStatusPanelProps {
   callState: DealerCallState;
   roleplay: boolean;
   onRoleplaySessionEnded: () => void;
+  onHangUp: () => void;
   highlightLine?: number;
 }
 
@@ -61,6 +62,7 @@ export default function CallStatusPanel({
   callState,
   roleplay,
   onRoleplaySessionEnded,
+  onHangUp,
   highlightLine,
 }: CallStatusPanelProps) {
   if (!dealer) {
@@ -122,6 +124,14 @@ export default function CallStatusPanel({
         </div>
         <div className="flex items-center gap-3">
           <ElapsedTicker startedAt={callState.startedAt} live={state === "live"} />
+          {state === "live" && (
+            <button
+              onClick={onHangUp}
+              className="rounded-lg bg-error-dim px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error hover:text-white"
+            >
+              End call
+            </button>
+          )}
           <StateBadge state={state} />
         </div>
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getCall, getRecordingUrl, listDealers, listQuotes, startCall, updateDealer } from "./api";
+import { endCall, getCall, getRecordingUrl, listDealers, listQuotes, startCall, updateDealer } from "./api";
 import {
   MOCK_OUTCOMES,
   MOCK_QUOTES,
@@ -271,6 +271,32 @@ export function useCallCenter(specId: string) {
     [dealers, calls, clearTimers, runMockCall, runRealCall, startRoleplay, roleplay, nextRound]
   );
 
+  // manual early hang-up. Mock: settle the call locally. Bridge: ask the
+  // backend to stop; the already-running status poll picks up "completed".
+  // Roleplay hangs up through its own session controls, not here.
+  const hangUp = useCallback(
+    (dealerId: string) => {
+      const cur = calls[dealerId];
+      if (cur?.state !== "live") return;
+      if (USE_MOCKS) {
+        clearTimers(dealerId);
+        patch(dealerId, {
+          state: "done",
+          outcome: "callback",
+          quote: null,
+          recordingUrl: mockRecordingUrl(),
+        });
+        return;
+      }
+      if (cur.mode === "bridge" && cur.callId) {
+        void endCall(cur.callId).catch(() => {
+          patch(dealerId, { error: "Could not end the call — it may finish on its own." });
+        });
+      }
+    },
+    [calls, clearTimers, patch]
+  );
+
   const setPersona = useCallback(
     async (dealerId: string, persona: Persona) => {
       const updated = await updateDealer(dealerId, persona);
@@ -300,6 +326,7 @@ export function useCallCenter(specId: string) {
     select: setSelected,
     call,
     callAll,
+    hangUp,
     setPersona,
     roleplay,
     setRoleplay,

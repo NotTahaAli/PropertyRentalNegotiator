@@ -857,3 +857,39 @@ def test_recording_endpoint_owner_only(monkeypatch):
     response = client.get("/calls/c1/recording")
     assert response.status_code == 200
     assert response.json() == {"recording_url": "https://signed/c1.wav"}
+
+
+def test_end_call_404s_for_non_owner(monkeypatch):
+    monkeypatch.setattr(crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1"})
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    _as(USER_B)
+
+    response = client.post("/calls/c1/end")
+
+    assert response.status_code == 404
+
+
+def test_end_call_signals_running_bridge(monkeypatch):
+    monkeypatch.setattr(crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1"})
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    stopped = []
+    monkeypatch.setattr(api, "request_stop", lambda call_id: stopped.append(call_id) or True)
+    _as(USER_A)
+
+    response = client.post("/calls/c1/end")
+
+    assert response.status_code == 200
+    assert response.json() == {"call_id": "c1", "stopping": True}
+    assert stopped == ["c1"]
+
+
+def test_end_call_reports_no_active_bridge(monkeypatch):
+    monkeypatch.setattr(crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1"})
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    monkeypatch.setattr(api, "request_stop", lambda call_id: False)
+    _as(USER_A)
+
+    response = client.post("/calls/c1/end")
+
+    assert response.status_code == 200
+    assert response.json() == {"call_id": "c1", "stopping": False}

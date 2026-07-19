@@ -46,7 +46,9 @@ an item; delete resolved items instead of checking them off.
   Same call also verifies the new half-duplex turn-taking gate
   (`bridge.TurnGate` + `turn_sender`): agents should no longer talk over
   each other live — one voice at a time, short pause when a held leg takes
-  the floor. Unit-tested only so far.
+  the floor. Also click "End call" mid-call once: the bridge should finalize
+  early (recording + transcript + outcome land on the row). Unit-tested only
+  so far.
 
 - **Live voice intake click-through** — voice path fully wired
   (`set_spec_field` client tool + `end_call` live on the Estimator,

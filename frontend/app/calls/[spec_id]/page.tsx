@@ -22,6 +22,7 @@ export default function CallCenterPage() {
     select,
     call,
     callAll,
+    hangUp,
     setPersona,
     roleplay,
     setRoleplay,
@@ -136,6 +137,7 @@ export default function CallCenterPage() {
               callState={selectedDealer ? stateFor(selectedDealer.id) : { state: "idle", transcript: [] }}
               roleplay={selectedDealer ? !!roleplay[selectedDealer.id] : false}
               onRoleplaySessionEnded={() => selectedDealer && finishRoleplaySession(selectedDealer.id)}
+              onHangUp={() => selectedDealer && hangUp(selectedDealer.id)}
               highlightLine={highlightLine}
             />
           </div>

@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from . import crud, live, storage
 from .auth import _decode, get_current_user_id
 from .benchmark import discover_dealers, fetch_benchmark
-from .bridge import derive_outcome, run_bridge
+from .bridge import derive_outcome, request_stop, run_bridge
 from .seed import seed_dealers
 from .vertical import load_vertical
 
@@ -301,6 +301,14 @@ async def start_call(
         )
     )
     return {"call_id": call_id, "status": "running"}
+
+
+@calls_router.post("/{id}/end")
+def end_call(id: str, user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
+    _require_call_owner(id, user_id)
+    # stopping=False: bridge already over (or roleplay — ended client-side);
+    # the caller's status poll converges either way.
+    return {"call_id": id, "stopping": request_stop(id)}
 
 
 @webhooks_router.post("/post-call")

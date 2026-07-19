@@ -597,6 +597,39 @@ def test_run_bridge_writes_failed_on_exception(monkeypatch):
     assert fields["outcome"] == "failed"
 
 
+def test_request_stop_returns_false_when_no_active_bridge():
+    assert bridge.request_stop("no-such-call") is False
+
+
+def test_run_bridge_stops_early_and_finalizes_on_request_stop(monkeypatch):
+    neg_ws = _HangingWebSocket()
+    deal_ws = _HangingWebSocket()
+    monkeypatch.setattr(
+        bridge, "_connect", lambda agent_id: _FakeConnect(neg_ws if agent_id == "agent-neg" else deal_ws)
+    )
+    updates = []
+    monkeypatch.setattr(bridge.crud, "update_call", lambda call_id, fields: updates.append((call_id, fields)))
+    monkeypatch.setattr(bridge.storage, "upload_recording", lambda call_id, wav: f"{call_id}.wav")
+
+    async def scenario():
+        task = asyncio.ensure_future(
+            bridge.run_bridge("call-stop", "spec-1", "dealer-1", "agent-neg", "agent-deal", {})
+        )
+        await asyncio.sleep(0.05)
+        assert bridge.request_stop("call-stop") is True
+        await asyncio.wait_for(task, timeout=2)
+
+    asyncio.run(scenario())
+
+    assert len(updates) == 1
+    call_id, fields = updates[0]
+    assert call_id == "call-stop"
+    assert fields["status"] == "completed"
+    assert fields["outcome"] == "callback"
+    # stop event deregistered once the call is over
+    assert bridge.request_stop("call-stop") is False
+
+
 def test_dealer_init_suppresses_first_message_with_a_space_not_empty_string():
     # Live-verified against the real ElevenLabs API: an empty-string first_message
     # override never closes the agent's own turn (it never starts listening for

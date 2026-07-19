@@ -132,6 +132,14 @@ export async function getCall(callId: string): Promise<CallRow> {
   return getJson(`/calls/${encodeURIComponent(callId)}`);
 }
 
+export async function endCall(callId: string): Promise<void> {
+  const r = await fetch(`${BASE}/calls/${encodeURIComponent(callId)}/end`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  if (!r.ok) throw new Error(`end call failed: ${r.status}`);
+}
+
 export async function getRecordingUrl(callId: string): Promise<string | null> {
   const res = await getJson<{ recording_url: string | null }>(
     `/calls/${encodeURIComponent(callId)}/recording`

@@ -89,6 +89,20 @@ def _other(leg: str) -> str:
     return "dealer" if leg == "negotiator" else "negotiator"
 
 
+# ponytail: single-process registry, same constraint as live._subscribers —
+# one free-tier Render worker, the bridge task and the /end request share it.
+_stop_events: dict[str, asyncio.Event] = {}
+
+
+def request_stop(call_id: str) -> bool:
+    """Ask a running bridge to hang up early. False if no such bridge."""
+    event = _stop_events.get(call_id)
+    if event is None:
+        return False
+    event.set()
+    return True
+
+
 class CallSink:
     def __init__(self, call_id: str):
         self.call_id = call_id
@@ -256,6 +270,7 @@ async def run_bridge(
     dynamic_vars: dict,
 ) -> None:
     sink = CallSink(call_id)
+    stop_event = _stop_events[call_id] = asyncio.Event()
     failed = False
     try:
         async with _connect(negotiator_agent_id) as neg_ws, _connect(dealer_agent_id) as deal_ws:
@@ -273,6 +288,8 @@ async def run_bridge(
                 asyncio.ensure_future(silence_feeder(deal_ws, "dealer", sink)),
                 asyncio.ensure_future(silence_feeder(neg_ws, "negotiator", sink)),
                 asyncio.ensure_future(_silence_watchdog(sink)),
+                # user hit "End call": first completed task wins, normal finalize
+                asyncio.ensure_future(stop_event.wait()),
             }
             done, pending = await asyncio.wait(
                 tasks, timeout=MAX_CALL_SECONDS, return_when=asyncio.FIRST_COMPLETED
@@ -287,6 +304,7 @@ async def run_bridge(
     except Exception:
         failed = True
     finally:
+        _stop_events.pop(call_id, None)
         peaks = {leg: max(scores, default=0.0) for leg, scores in sink.vad_scores.items()}
         print(f"call {call_id} vad peaks: {peaks}")
         wav_bytes = stereo_wav(bytes(sink.pcm["negotiator"]), bytes(sink.pcm["dealer"]))
