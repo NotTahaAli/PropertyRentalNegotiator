@@ -402,3 +402,30 @@ def test_single_property_dealer_row_id_and_property_ref_unaffected(monkeypatch):
     assert len(rows) == 1
     assert rows[0]["property_ref"] is None
     assert rows[0]["row_id"] == "d1:"
+
+
+# --- explicit call-outcome taxonomy survives report normalization --------
+
+def test_final_quote_outcome_survives_alongside_its_quote_row(monkeypatch):
+    # A quote-family outcome the negotiator explicitly logged via
+    # log_call_status carries more information than the generic "quote" the
+    # old normalization always fell back to — it must not be flattened.
+    dealers = [_dealer("d1", "Firm", "firm")]
+    calls = [_call("c1", "d1", 1, "2026-01-01T10:00:00Z", outcome="final_quote")]
+    _wire(monkeypatch, dealers, calls, {"c1": [_quote("c1", "d1", 1_460_000)]})
+
+    row = report.build_report(SPEC_ID)["rows"][0]
+
+    assert row["outcome"] == "final_quote"
+    assert row["rank"] == 1
+
+
+def test_vague_quote_outcome_survives_alongside_its_quote_row(monkeypatch):
+    dealers = [_dealer("d1", "Lowball", "lowballer")]
+    calls = [_call("c1", "d1", 1, "2026-01-01T10:00:00Z", outcome="vague_quote")]
+    _wire(monkeypatch, dealers, calls, {"c1": [_quote("c1", "d1", 900_000, binding=False)]})
+
+    row = report.build_report(SPEC_ID)["rows"][0]
+
+    assert row["outcome"] == "vague_quote"
+    assert row["rank"] == 1

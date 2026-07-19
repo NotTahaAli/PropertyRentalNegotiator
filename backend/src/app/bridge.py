@@ -252,15 +252,54 @@ def derive_outcome(transcript: list[dict], has_quote: bool = False) -> str:
     return "callback"
 
 
+def _auto_block_declined(call: dict, outcome: str | None) -> None:
+    if outcome == "declined":
+        crud.update_dealer(call["dealer_id"], {"status": "declined"})
+
+
+def _existing_outcome(call_id: str) -> str | None:
+    """Best-effort by design, same reasoning as `has_logged_quote`: every caller
+    is finalizing a call, and a failed read here must degrade to whatever
+    `fields` already computed rather than lose the call record.
+    """
+    try:
+        call = crud.get_call(call_id)
+    except Exception:
+        return None
+    return call.get("outcome") if call else None
+
+
+def set_call_outcome(call_id: str, fields: dict) -> dict:
+    """Authoritative outcome write, from the negotiator's own `log_call_status`
+    tool call (tools.log_call_status). Always applies, including updating an
+    outcome the agent already set — this is the ground truth `finalize_call`'s
+    guard (below) exists to protect from being overwritten later by a blunter
+    guess.
+    """
+    call = crud.update_call(call_id, fields)
+    _auto_block_declined(call, fields.get("outcome"))
+    return call
+
+
 def finalize_call(call_id: str, fields: dict) -> dict:
     """Write the terminal call row and auto-block the dealer on a decline.
+
+    An outcome already on the row wins over whatever `fields` computes here:
+    if the negotiator already called `log_call_status` mid-call (ground truth,
+    see `set_call_outcome`), that value survives — otherwise this blunter
+    guess (`derive_outcome`, only quote/declined/callback) would clobber a
+    richer explicit value like `final_quote`/`vague_quote` the instant the
+    call actually ends.
 
     `crud.update_call` returns the full row (including dealer_id), so callers
     that never separately fetched the dealer (the webhook) still get it here.
     """
+    if "outcome" in fields:
+        existing = _existing_outcome(call_id)
+        if existing:
+            fields = {**fields, "outcome": existing}
     call = crud.update_call(call_id, fields)
-    if fields.get("outcome") == "declined":
-        crud.update_dealer(call["dealer_id"], {"status": "declined"})
+    _auto_block_declined(call, fields.get("outcome"))
     return call
 
 

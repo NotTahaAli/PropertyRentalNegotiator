@@ -16,7 +16,15 @@ AUDIO_FORMAT = "pcm_16000"
 def _property_to_schema(prop: dict):
     from elevenlabs.types import LiteralJsonSchemaProperty
 
-    return LiteralJsonSchemaProperty(type=prop["type"], description=prop["description"])
+    # id fields (call_id/dealer_id/spec_id): system-filled from the named
+    # dynamic variable at runtime, never LLM-supplied — see agent_factory
+    # ._id_property for why (the model is never shown the real UUID).
+    if "dynamic_variable" in prop:
+        return LiteralJsonSchemaProperty(type=prop["type"], dynamic_variable=prop["dynamic_variable"])
+    kwargs = {"type": prop["type"], "description": prop["description"]}
+    if "enum" in prop:
+        kwargs["enum"] = prop["enum"]
+    return LiteralJsonSchemaProperty(**kwargs)
 
 
 def _tool_schema_to_request(tool: dict, backend_base_url: str):

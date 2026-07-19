@@ -3,7 +3,7 @@
 import Button from "@/components/ui/Button";
 import StateBadge from "./StateBadge";
 import { PERSONA_HINTS } from "@/lib/mocks";
-import { PERSONAS, type Dealer, type DealerStatus, type Persona } from "@/lib/types";
+import { OUTCOME_COPY, PERSONAS, type Dealer, type DealerStatus, type Persona } from "@/lib/types";
 import type { DealerCallState } from "@/lib/useCallCenter";
 
 interface DealerCardProps {
@@ -103,7 +103,9 @@ export default function DealerCard({
           ) : outcome === "declined" ? (
             <span className="text-error">Declined — unit not available</span>
           ) : (
-            <span className="text-text-secondary">Ended: {outcome ?? "not recorded"}</span>
+            <span className="text-text-secondary">
+              {outcome ? OUTCOME_COPY[outcome].label : "Call ended — outcome not recorded yet"}
+            </span>
           )}
         </p>
       )}

@@ -7,7 +7,12 @@ PERSONA_LLM = "gemini-3.1-flash-lite"
 
 PERSONA_NAMES = ["stonewaller", "lowballer", "upseller", "firm"]
 
-NEGOTIATOR_TOOL_NAMES = ["log_quote", "get_leverage", "check_redflag", "get_benchmark"]
+NEGOTIATOR_TOOL_NAMES = ["log_quote", "get_leverage", "check_redflag", "get_benchmark", "log_call_status"]
+
+# Every outcome the negotiator can explicitly log via log_call_status. Kept next
+# to the tool schema builder so the enum offered to the LLM and the values the
+# backend accepts (tools.py) can't drift apart.
+CALL_OUTCOMES = ["quote", "final_quote", "vague_quote", "declined", "callback"]
 
 
 @dataclass
@@ -53,6 +58,23 @@ def _fee_property(fee_name: str, fee_hints: dict[str, str]) -> dict:
     }
 
 
+def _id_property(dynamic_variable: str) -> dict:
+    """A call/dealer/spec id, auto-filled by ElevenLabs from the named dynamic
+    variable set at conversation start (api._dynamic_variables) instead of being
+    typed by the LLM.
+
+    Every id was previously LLM-supplied free text ("Current call id.") even
+    though the model was never shown the actual value anywhere in its prompt or
+    context — it had no way to know the real UUID, so it either omitted the
+    required field or invented one, and log_quote/get_leverage/check_redflag/
+    get_benchmark calls failed silently (tools are prompted as invisible, so the
+    agent never surfaced or retried the failure). Binding these to
+    `dynamic_variable` removes the LLM from the loop entirely for values it can
+    never actually know.
+    """
+    return {"type": "string", "dynamic_variable": dynamic_variable}
+
+
 def _webhook_tool(name: str, description: str, properties: dict, required: list[str]) -> dict:
     return {
         "type": "webhook",
@@ -80,8 +102,8 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
         "repeat calls update the same quote and earlier fields are kept.",
         {
             **fee_properties,
-            "call_id": {"type": "string", "description": "Current call id."},
-            "dealer_id": {"type": "string", "description": "Current dealer id."},
+            "call_id": _id_property("call_id"),
+            "dealer_id": _id_property("dealer_id"),
             "property_ref": {
                 "type": "string",
                 "description": "Identifier of the specific shop/unit this quote is for (e.g. "
@@ -109,7 +131,7 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
         {
             **{fee: fee_properties[fee] for fee in redflag_fees},
             "binding": {"type": "boolean", "description": "Whether the dealer can produce a written quote."},
-            "spec_id": {"type": "string", "description": "Current client spec id."},
+            "spec_id": _id_property("spec_id"),
         },
         required=["spec_id"],
     )
@@ -119,8 +141,8 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
         "Returns the best real quotes logged so far for this spec, each tagged with the "
         "property it's for. Empty if none exist yet.",
         {
-            "spec_id": {"type": "string", "description": "Current client spec id."},
-            "dealer_id": {"type": "string", "description": "Current dealer id (their own quotes are excluded)."},
+            "spec_id": _id_property("spec_id"),
+            "dealer_id": _id_property("dealer_id"),
         },
         required=["spec_id", "dealer_id"],
     )
@@ -128,11 +150,43 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
     get_benchmark = _webhook_tool(
         "get_benchmark",
         "Returns the cached market rent benchmark for this spec's location.",
-        {"spec_id": {"type": "string", "description": "Current client spec id."}},
+        {"spec_id": _id_property("spec_id")},
         required=["spec_id"],
     )
 
-    return [log_quote, get_leverage, check_redflag, get_benchmark]
+    log_call_status = _webhook_tool(
+        "log_call_status",
+        "Records how this call ended. Call it exactly once, right before you hang up, "
+        "with the outcome that best matches what actually happened: "
+        "'quote' — you got numbers but the call isn't fully resolved yet; "
+        "'final_quote' — the dealer gave a complete itemised quote and confirmed it is their "
+        "final, non-negotiable offer; "
+        "'vague_quote' — the dealer gave real verbal numbers but would not confirm them in "
+        "writing (send binding=false via log_quote too); "
+        "'callback' — the dealer could not give numbers now and agreed to a specific follow-up "
+        "(pass callback_at with the concrete time they committed to, e.g. 'tomorrow 4pm' or an "
+        "ISO datetime, never a vague 'later'); "
+        "'declined' — the dealer said the unit is unavailable or they are not interested.",
+        {
+            "call_id": _id_property("call_id"),
+            "outcome": {
+                "type": "string",
+                "enum": CALL_OUTCOMES,
+                "description": "How the call ended. One of: " + ", ".join(CALL_OUTCOMES) + ".",
+            },
+            "callback_at": {
+                "type": "string",
+                "description": "Only for outcome=callback: the concrete time the dealer committed to.",
+            },
+            "notes": {
+                "type": "string",
+                "description": "Brief context for the outcome, e.g. why the dealer declined.",
+            },
+        },
+        required=["call_id", "outcome"],
+    )
+
+    return [log_quote, get_leverage, check_redflag, get_benchmark, log_call_status]
 
 
 _SPEC_JSON_TYPES = {"number": "number", "string": "string", "enum": "string", "bool": "boolean", "date": "string"}

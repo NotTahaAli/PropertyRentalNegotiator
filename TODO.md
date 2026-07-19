@@ -11,12 +11,32 @@ an item; delete resolved items instead of checking them off.
   `dealers.status` (default `'active'`, check `active|declined`). Run
   `supabase db push` against the linked project before the decline/reactivate
   UI or the `start_call` 422-on-declined check can work against real data.
+  Also pending: `20260719120000_call_status_detail.sql` (`calls.callback_at`,
+  `calls.callback_note`, both nullable text) — needed before `log_call_status`
+  can write callback detail against real data.
 - **`make_agents` re-run** — `vertical.json` prompts changed (no-narration
   rule on negotiator + estimator, "written quote not agreement" language,
   stronger vague-answer probing, wording-variety instructions) and all 4
   persona `AgentDef`s now carry `end_call=True` (`agent_factory.py`). None of
   this reaches live ElevenLabs agents until `uv run python -m app.make_agents`
-  is re-run with live keys.
+  is re-run with live keys. **This session added a 5th webhook tool
+  (`log_call_status`) and rebound every id param on all 5 tools
+  (`call_id`/`dealer_id`/`spec_id`) from LLM-typed strings to
+  `dynamic_variable`-bound values** (see CLAUDE.md K3/K4) — until
+  `make_agents` re-runs, the live negotiator agent still has the old tool
+  schemas and log_quote's original unreliable-id-typing behavior is
+  unchanged in production. This is the fix for the exact live symptom that
+  triggered this work: a call where the dealer stated a full itemised quote
+  verbally but it never reached the `quotes` table, so the UI showed
+  "Dealer asked for a callback — no numbers committed" despite real numbers
+  being spoken. High priority re-run.
+- **Live-verify `log_call_status`** — new tool, unit-tested only
+  (`test_tools.py`, `test_bridge.py::test_set_call_outcome_*`). Needs one real
+  negotiator call per terminal outcome (`final_quote`, `vague_quote`,
+  `callback` with a real `callback_at`, `declined`) to confirm the live LLM
+  actually calls it with a valid `outcome` value and that `bridge.finalize_call`
+  correctly leaves it alone rather than overwriting it with the
+  `derive_outcome` fallback guess.
 - **Live-verify persona anchor figures** — `api._dealer_dynamic_variables`
   computes randomized per-call `{{asking_rent}}`/`{{advance_months}}`/etc. and
   `run_bridge` now passes them as the dealer leg's `dynamic_variables`; unit

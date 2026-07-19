@@ -119,7 +119,13 @@ export interface TranscriptLine {
 
 // Backend statuses; UI adds idle/calling/live on top (see UiCallState).
 export type CallStatus = "running" | "completed" | "failed";
-export type CallOutcome = "quote" | "declined" | "callback" | "failed";
+export type CallOutcome =
+  | "quote"
+  | "final_quote"
+  | "vague_quote"
+  | "declined"
+  | "callback"
+  | "failed";
 
 export interface CallRow {
   id: string;
@@ -132,7 +138,23 @@ export interface CallRow {
   recording_url?: string | null;
   transcript_json?: TranscriptLine[] | null;
   outcome?: CallOutcome | null;
+  callback_at?: string | null;
+  callback_note?: string | null;
 }
+
+// Shared label copy for CallOutcome — reused by CallStatusPanel and DealerCard
+// so the two never drift apart.
+export const OUTCOME_COPY: Record<
+  CallOutcome,
+  { label: string; tone: "success" | "error" | "neutral" }
+> = {
+  quote: { label: "Quote logged", tone: "success" },
+  final_quote: { label: "Final quote — dealer confirmed no further room", tone: "success" },
+  vague_quote: { label: "Verbal numbers only — no written quote", tone: "neutral" },
+  declined: { label: "Dealer declined — unit not available", tone: "error" },
+  callback: { label: "Dealer asked for a callback", tone: "neutral" },
+  failed: { label: "Call failed before completing", tone: "error" },
+};
 
 export interface Quote {
   id?: string;

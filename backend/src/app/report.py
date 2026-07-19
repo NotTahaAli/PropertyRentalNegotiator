@@ -29,6 +29,13 @@ from .vertical import load_vertical
 
 report_router = APIRouter(prefix="/report", tags=["report"])
 
+# Outcomes that mean "this call produced a quote" — a quote row is proof of at
+# least this much regardless of what's stored, but an already-quote-family
+# outcome (set explicitly by the negotiator's log_call_status tool) carries
+# more information than the generic "quote" and should survive into the
+# report rather than being flattened.
+QUOTE_OUTCOMES = {"quote", "final_quote", "vague_quote"}
+
 
 def _call_sort_key(call: dict[str, Any]) -> tuple[str, str]:
     # started_at is set by /calls/start; fall back to id so ordering is always
@@ -92,10 +99,15 @@ def _report_row(
         "rank": None,  # assigned below
         "quote": quote,
         "round": call.get("round", 1),
-        # A quote row on the call is proof of a quote, so it outranks a
-        # stored outcome. Keeps the report right even for rows written
-        # before outcome derivation started trusting the quotes table.
-        "outcome": "quote" if quote else (call.get("outcome") or "failed"),
+        # A quote row on the call is proof of at least a plain "quote", so it
+        # outranks a stale/missing stored outcome — but a richer quote-family
+        # outcome the negotiator explicitly logged (final_quote/vague_quote)
+        # is kept rather than flattened back down to "quote".
+        "outcome": (
+            call.get("outcome")
+            if call.get("outcome") in QUOTE_OUTCOMES
+            else ("quote" if quote else (call.get("outcome") or "failed"))
+        ),
         "call_number": call_number[call["id"]],
         "citation_line": _citation_line(call.get("transcript_json"), quote),
         "recording_url": _signed_recording(call),

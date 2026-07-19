@@ -11,6 +11,7 @@ TOOL_PATHS = [
     "/tools/get_leverage",
     "/tools/check_redflag",
     "/tools/get_benchmark",
+    "/tools/log_call_status",
 ]
 
 SECRET = "s3cret"
@@ -589,3 +590,88 @@ def test_log_quote_unknown_call_404(monkeypatch):
     )
     assert response.status_code == 404
     assert called == []
+
+
+# --- POST /tools/log_call_status ------------------------------------------
+
+def _wire_status_call(monkeypatch, existing_outcome=None):
+    updates = []
+    monkeypatch.setattr(crud, "get_call", lambda id: {"id": id, "dealer_id": "d1", "outcome": existing_outcome} if id == "c1" else None)
+
+    def fake_update(id, fields):
+        updates.append((id, fields))
+        return {"id": id, "dealer_id": "d1", **fields}
+
+    monkeypatch.setattr(crud, "update_call", fake_update)
+    blocked = []
+    monkeypatch.setattr(crud, "update_dealer", lambda id, fields: blocked.append((id, fields)))
+    return updates, blocked
+
+
+def test_log_call_status_invalid_outcome_422(monkeypatch):
+    _wire_status_call(monkeypatch)
+    response = client.post(
+        "/tools/log_call_status",
+        json={"call_id": "c1", "outcome": "maybe"},
+        headers=_headers(),
+    )
+    assert response.status_code == 422
+
+
+def test_log_call_status_unknown_call_404(monkeypatch):
+    _wire_status_call(monkeypatch)
+    response = client.post(
+        "/tools/log_call_status",
+        json={"call_id": "nope", "outcome": "quote"},
+        headers=_headers(),
+    )
+    assert response.status_code == 404
+
+
+def test_log_call_status_writes_outcome(monkeypatch):
+    updates, _ = _wire_status_call(monkeypatch)
+    response = client.post(
+        "/tools/log_call_status",
+        json={"call_id": "c1", "outcome": "final_quote"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json() == {"call_id": "c1", "outcome": "final_quote"}
+    assert updates == [("c1", {"outcome": "final_quote"})]
+
+
+def test_log_call_status_declined_blocks_dealer(monkeypatch):
+    _, blocked = _wire_status_call(monkeypatch)
+    response = client.post(
+        "/tools/log_call_status",
+        json={"call_id": "c1", "outcome": "declined"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert blocked == [("d1", {"status": "declined"})]
+
+
+def test_log_call_status_callback_writes_time_and_note(monkeypatch):
+    updates, _ = _wire_status_call(monkeypatch)
+    response = client.post(
+        "/tools/log_call_status",
+        json={"call_id": "c1", "outcome": "callback", "callback_at": "tomorrow 4pm", "notes": "ask for Bilal"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert updates == [
+        ("c1", {"outcome": "callback", "callback_at": "tomorrow 4pm", "callback_note": "ask for Bilal"})
+    ]
+
+
+def test_log_call_status_updates_an_already_set_outcome(monkeypatch):
+    # set_call_outcome (unlike finalize_call) is the authoritative setter and
+    # must apply even if the negotiator already logged one earlier in the call.
+    updates, _ = _wire_status_call(monkeypatch, existing_outcome="quote")
+    response = client.post(
+        "/tools/log_call_status",
+        json={"call_id": "c1", "outcome": "final_quote"},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["outcome"] == "final_quote"

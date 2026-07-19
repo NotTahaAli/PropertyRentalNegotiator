@@ -27,6 +27,8 @@ export interface DealerCallState {
   outcome?: CallOutcome;
   // A dealer may log more than one quote (one per matching property).
   quotes: Quote[];
+  callbackAt?: string | null;
+  callbackNote?: string | null;
   recordingUrl?: string | null;
   error?: string;
   mode?: "bridge" | "roleplay";
@@ -193,6 +195,8 @@ export function useCallCenter(specId: string) {
             outcome: quotes && quotes.length > 0 ? "quote" : call.outcome ?? undefined,
             ...(quotes !== undefined ? { quotes } : {}),
             recordingUrl,
+            callbackAt: call.callback_at,
+            callbackNote: call.callback_note,
           });
           if (call.outcome === "declined") markDeclined(dealerId);
         } catch {
@@ -267,6 +271,8 @@ export function useCallCenter(specId: string) {
                 : c.outcome ?? undefined,
           quotes,
           recordingUrl,
+          callbackAt: c.callback_at,
+          callbackNote: c.callback_note,
         });
       }
     })();

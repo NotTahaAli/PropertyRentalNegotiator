@@ -48,15 +48,15 @@ class FakeClient:
         self.conversational_ai = FakeConversationalAi(remote_agents, remote_tools)
 
 
-def test_first_run_creates_five_tools_and_six_agents():
+def test_first_run_creates_six_tools_and_six_agents():
     config = load_vertical()
     client = FakeClient()
 
     manifest = upsert_all(client, config, manifest={}, backend_base_url="http://x")
 
-    assert len(client.conversational_ai.tools.created) == 5
+    assert len(client.conversational_ai.tools.created) == 6
     assert len(client.conversational_ai.agents.created) == 6
-    assert len(manifest["tools"]) == 5
+    assert len(manifest["tools"]) == 6
     assert len(manifest["agents"]) == 6
 
 
@@ -70,7 +70,7 @@ def test_every_webhook_tool_sends_shared_secret_header():
         kwargs for _tool_id, kwargs in client.conversational_ai.tools.created
         if kwargs["request"].tool_config.type == "webhook"
     ]
-    assert len(webhook_tools) == 4
+    assert len(webhook_tools) == 5
     for kwargs in webhook_tools:
         headers = kwargs["request"].tool_config.api_schema.request_headers
         assert headers == {"X-Tools-Secret": "test-secret"}
@@ -144,11 +144,33 @@ def test_second_run_with_manifest_updates_instead_of_creating():
     manifest2 = upsert_all(client2, config, manifest=manifest, backend_base_url="http://x")
 
     assert len(client2.conversational_ai.tools.created) == 0
-    assert len(client2.conversational_ai.tools.updated) == 5
+    assert len(client2.conversational_ai.tools.updated) == 6
     assert len(client2.conversational_ai.agents.created) == 0
     assert len(client2.conversational_ai.agents.updated) == 6
     assert manifest2["agents"] == manifest["agents"]
     assert manifest2["tools"] == manifest["tools"]
+
+
+def test_id_params_reach_elevenlabs_as_dynamic_variable_bound_not_llm_typed():
+    # Regression: call_id/dealer_id/spec_id used to be plain LLM-described string
+    # params even though the model was never shown their real value anywhere,
+    # so log_quote and friends silently failed. They must reach the actual
+    # ElevenLabs request as `dynamic_variable`-bound, not `description`-bound.
+    config = load_vertical()
+    client = FakeClient()
+
+    upsert_all(client, config, manifest={}, backend_base_url="http://x")
+
+    by_name = {
+        kwargs["request"].tool_config.name: kwargs["request"].tool_config
+        for _tool_id, kwargs in client.conversational_ai.tools.created
+    }
+    call_id_prop = by_name["log_quote"].api_schema.request_body_schema.properties["call_id"]
+    assert call_id_prop.dynamic_variable == "call_id"
+    assert call_id_prop.description in (None, "")
+
+    outcome_prop = by_name["log_call_status"].api_schema.request_body_schema.properties["outcome"]
+    assert outcome_prop.enum == ["quote", "final_quote", "vague_quote", "declined", "callback"]
 
 
 def test_lost_manifest_reuses_remote_match_by_name_instead_of_duplicating(tmp_path):
@@ -164,7 +186,7 @@ def test_lost_manifest_reuses_remote_match_by_name_instead_of_duplicating(tmp_pa
     assert manifest["tools"]["log_quote"] == "tool_remote_existing"
     assert manifest["agents"]["estimator"] == "agent_remote_existing"
     assert ("tool_remote_existing", ) not in [c[:1] for c in client.conversational_ai.tools.created]
-    assert len(client.conversational_ai.tools.created) == 4
+    assert len(client.conversational_ai.tools.created) == 5
     assert len(client.conversational_ai.agents.created) == 5
     assert manifest_path.exists()
     assert json.loads(manifest_path.read_text()) == manifest

@@ -587,6 +587,7 @@ def test_run_bridge_writes_terminal_outcome_on_normal_close(monkeypatch):
         bridge, "_connect", lambda agent_id: _FakeConnect(neg_ws if agent_id == "agent-neg" else deal_ws)
     )
     updates = []
+    monkeypatch.setattr(bridge.crud, "get_call", lambda call_id: None)
     monkeypatch.setattr(bridge.crud, "update_call", lambda call_id, fields: updates.append((call_id, fields)))
     monkeypatch.setattr(bridge.storage, "upload_recording", lambda call_id, wav: f"{call_id}.wav")
 
@@ -609,6 +610,7 @@ def test_run_bridge_writes_terminal_outcome_on_normal_close(monkeypatch):
 def test_run_bridge_writes_failed_on_exception(monkeypatch):
     monkeypatch.setattr(bridge, "_connect", lambda agent_id: _BoomConnect())
     updates = []
+    monkeypatch.setattr(bridge.crud, "get_call", lambda call_id: None)
     monkeypatch.setattr(bridge.crud, "update_call", lambda call_id, fields: updates.append((call_id, fields)))
     monkeypatch.setattr(bridge.storage, "upload_recording", lambda call_id, wav: None)
 
@@ -632,6 +634,7 @@ def test_run_bridge_stops_early_and_finalizes_on_request_stop(monkeypatch):
         bridge, "_connect", lambda agent_id: _FakeConnect(neg_ws if agent_id == "agent-neg" else deal_ws)
     )
     updates = []
+    monkeypatch.setattr(bridge.crud, "get_call", lambda call_id: None)
     monkeypatch.setattr(bridge.crud, "update_call", lambda call_id, fields: updates.append((call_id, fields)))
     monkeypatch.setattr(bridge.storage, "upload_recording", lambda call_id, wav: f"{call_id}.wav")
 
@@ -679,6 +682,7 @@ def test_dealer_init_carries_persona_anchor_vars():
 
 
 def test_finalize_call_blocks_dealer_on_declined_outcome(monkeypatch):
+    monkeypatch.setattr(bridge.crud, "get_call", lambda call_id: None)
     monkeypatch.setattr(
         bridge.crud, "update_call", lambda call_id, fields: {"id": call_id, "dealer_id": "d1", **fields}
     )
@@ -691,6 +695,7 @@ def test_finalize_call_blocks_dealer_on_declined_outcome(monkeypatch):
 
 
 def test_finalize_call_leaves_dealer_alone_on_quote_outcome(monkeypatch):
+    monkeypatch.setattr(bridge.crud, "get_call", lambda call_id: None)
     monkeypatch.setattr(
         bridge.crud, "update_call", lambda call_id, fields: {"id": call_id, "dealer_id": "d1", **fields}
     )
@@ -699,6 +704,60 @@ def test_finalize_call_leaves_dealer_alone_on_quote_outcome(monkeypatch):
     )
 
     bridge.finalize_call("call-1", {"status": "completed", "outcome": "quote"})
+
+
+# --- finalize_call preserves an explicit log_call_status outcome ------------
+
+def test_finalize_call_preserves_explicit_outcome_over_computed_guess(monkeypatch):
+    # The negotiator already called log_call_status mid-call (final_quote is
+    # richer than anything derive_outcome's quote/declined/callback fallback
+    # can produce) — the terminal finalize path's blunter guess must not
+    # clobber it.
+    monkeypatch.setattr(
+        bridge.crud, "get_call", lambda call_id: {"id": call_id, "outcome": "final_quote"}
+    )
+    updates = []
+    monkeypatch.setattr(
+        bridge.crud,
+        "update_call",
+        lambda call_id, fields: updates.append((call_id, fields)) or {"id": call_id, "dealer_id": "d1", **fields},
+    )
+    monkeypatch.setattr(bridge.crud, "update_dealer", lambda *a: (_ for _ in ()).throw(AssertionError))
+
+    call = bridge.finalize_call("call-1", {"status": "completed", "outcome": "callback"})
+
+    assert call["outcome"] == "final_quote"
+    assert updates == [("call-1", {"status": "completed", "outcome": "final_quote"})]
+
+
+def test_finalize_call_uses_computed_outcome_when_none_set_yet(monkeypatch):
+    monkeypatch.setattr(bridge.crud, "get_call", lambda call_id: {"id": call_id, "outcome": None})
+    monkeypatch.setattr(
+        bridge.crud, "update_call", lambda call_id, fields: {"id": call_id, "dealer_id": "d1", **fields}
+    )
+    blocked = []
+    monkeypatch.setattr(bridge.crud, "update_dealer", lambda id, fields: blocked.append((id, fields)))
+
+    call = bridge.finalize_call("call-1", {"status": "completed", "outcome": "declined"})
+
+    assert call["outcome"] == "declined"
+    assert blocked == [("d1", {"status": "declined"})]
+
+
+def test_set_call_outcome_always_applies_even_over_an_existing_outcome(monkeypatch):
+    # Unlike finalize_call, set_call_outcome IS the explicit setter (the
+    # negotiator's log_call_status tool) — it must be able to update its own
+    # earlier value, not just be blocked by finalize_call's preserve-guard.
+    monkeypatch.setattr(
+        bridge.crud, "update_call", lambda call_id, fields: {"id": call_id, "dealer_id": "d1", **fields}
+    )
+    monkeypatch.setattr(
+        bridge.crud, "update_dealer", lambda id, fields: (_ for _ in ()).throw(AssertionError)
+    )
+
+    call = bridge.set_call_outcome("call-1", {"outcome": "final_quote"})
+
+    assert call["outcome"] == "final_quote"
 
 
 def test_run_bridge_has_no_time_cap_but_silence_watchdog_still_ends_it(monkeypatch):
@@ -711,6 +770,7 @@ def test_run_bridge_has_no_time_cap_but_silence_watchdog_still_ends_it(monkeypat
         bridge, "_connect", lambda agent_id: _FakeConnect(neg_ws if agent_id == "agent-neg" else deal_ws)
     )
     updates = []
+    monkeypatch.setattr(bridge.crud, "get_call", lambda call_id: None)
     monkeypatch.setattr(bridge.crud, "update_call", lambda call_id, fields: updates.append((call_id, fields)))
     monkeypatch.setattr(bridge.storage, "upload_recording", lambda call_id, wav: None)
 

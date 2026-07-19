@@ -7,7 +7,7 @@ import LiveAudio from "./LiveAudio";
 import RoleplaySession from "./RoleplaySession";
 import StateBadge from "./StateBadge";
 import TranscriptStream from "./TranscriptStream";
-import type { Dealer, TranscriptLine } from "@/lib/types";
+import { OUTCOME_COPY, type CallOutcome, type Dealer, type TranscriptLine } from "@/lib/types";
 import type { DealerCallState } from "@/lib/useCallCenter";
 
 function formatElapsed(s: number): string {
@@ -34,18 +34,28 @@ function ElapsedTicker({ startedAt, live }: { startedAt?: number; live: boolean 
   );
 }
 
-const OUTCOME_LABELS: Record<string, { text: string; className: string }> = {
-  declined: { text: "Dealer declined — unit not available", className: "bg-error-dim text-error" },
-  callback: { text: "Dealer asked for a callback — no numbers committed", className: "bg-elevated text-text-secondary" },
-  failed: { text: "Call failed before completing", className: "bg-error-dim text-error" },
-  // Shown when the backend never recorded an outcome (call not finalized, or the
-  // post-call webhook never landed). Saying "no numbers committed" here would be
-  // asserting something we don't know.
-  unrecorded: {
-    text: "Call ended — outcome not recorded yet",
-    className: "bg-elevated text-text-secondary",
-  },
+const TONE_CLASS: Record<"success" | "error" | "neutral", string> = {
+  success: "bg-success-dim text-success",
+  error: "bg-error-dim text-error",
+  neutral: "bg-elevated text-text-secondary",
 };
+
+// quote-ish outcomes get their own richer display (QuoteChip, in the page)
+// when a real quote row exists — this badge is only for outcomes that don't.
+const QUOTE_OUTCOMES: CallOutcome[] = ["quote", "final_quote", "vague_quote"];
+
+function outcomeBadge(outcome: CallOutcome | null | undefined, callbackAt?: string | null) {
+  if (!outcome) {
+    // The backend never recorded an outcome (call not finalized, or the
+    // post-call webhook never landed) — asserting a specific outcome here
+    // would be claiming something we don't actually know.
+    return { text: "Call ended — outcome not recorded yet", className: TONE_CLASS.neutral };
+  }
+  const copy = OUTCOME_COPY[outcome];
+  const label =
+    outcome === "callback" && callbackAt ? `${copy.label} — confirmed for ${callbackAt}` : copy.label;
+  return { text: label, className: TONE_CLASS[copy.tone] };
+}
 
 interface CallStatusPanelProps {
   dealer: Dealer | null;
@@ -181,13 +191,13 @@ export default function CallStatusPanel({
       {/* completed extras — the quote itself lives in the page's quote panel */}
       {state === "done" && (
         <div className="mt-5 flex flex-col gap-4 border-t border-border pt-4">
-          {!(outcome === "quote" && quotes.length > 0) && (
+          {!(quotes.length > 0 && outcome && QUOTE_OUTCOMES.includes(outcome)) && (
             <div
               className={`rounded-lg px-3.5 py-2.5 text-sm ${
-                (OUTCOME_LABELS[outcome ?? "unrecorded"] ?? OUTCOME_LABELS.unrecorded).className
+                outcomeBadge(outcome, callState.callbackAt).className
               }`}
             >
-              {(OUTCOME_LABELS[outcome ?? "unrecorded"] ?? OUTCOME_LABELS.unrecorded).text}
+              {outcomeBadge(outcome, callState.callbackAt).text}
             </div>
           )}
           <AudioPlayer url={recordingUrl} />

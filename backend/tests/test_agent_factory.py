@@ -1,4 +1,5 @@
 from app.agent_factory import (
+    CALL_OUTCOMES,
     build_agents,
     build_client_tool_schemas,
     build_dynamic_variable_names,
@@ -92,10 +93,45 @@ def test_get_leverage_requires_dealer_id():
     assert set(schema["required"]) == {"spec_id", "dealer_id"}
 
 
-def test_build_tool_schemas_returns_exactly_four_tools():
+def test_build_tool_schemas_returns_exactly_five_tools():
     config = load_vertical()
     names = {t["name"] for t in build_tool_schemas(config)}
-    assert names == {"log_quote", "get_leverage", "check_redflag", "get_benchmark"}
+    assert names == {"log_quote", "get_leverage", "check_redflag", "get_benchmark", "log_call_status"}
+
+
+# --- id params are dynamic-variable-bound, never LLM-supplied -----------
+# The LLM is never shown a call/dealer/spec's real UUID anywhere in its prompt
+# or context, so a plain "description" property (LLM types the value) meant it
+# either omitted the required field or invented one — log_quote and friends
+# failed silently. These ids must instead be system-filled from the dynamic
+# variable set at conversation start (api._dynamic_variables).
+
+def test_id_params_are_dynamic_variable_bound_not_llm_described():
+    config = load_vertical()
+    by_name = {t["name"]: t for t in build_tool_schemas(config)}
+    id_params = {
+        "log_quote": ["call_id", "dealer_id"],
+        "check_redflag": ["spec_id"],
+        "get_leverage": ["spec_id", "dealer_id"],
+        "get_benchmark": ["spec_id"],
+        "log_call_status": ["call_id"],
+    }
+    for tool_name, params in id_params.items():
+        props = by_name[tool_name]["api_schema"]["request_body_schema"]["properties"]
+        for param in params:
+            prop = props[param]
+            assert prop["dynamic_variable"] == param
+            assert "description" not in prop
+
+
+def test_log_call_status_tool_shape():
+    config = load_vertical()
+    tools = build_tool_schemas(config)
+    log_call_status = next(t for t in tools if t["name"] == "log_call_status")
+    schema = log_call_status["api_schema"]["request_body_schema"]
+    assert set(schema["required"]) == {"call_id", "outcome"}
+    assert schema["properties"]["outcome"]["enum"] == CALL_OUTCOMES
+    assert "callback_at" in schema["properties"]
 
 
 def test_build_agents_returns_six_agents_only_negotiator_has_tools():
@@ -116,6 +152,7 @@ def test_build_agents_returns_six_agents_only_negotiator_has_tools():
         "get_leverage",
         "check_redflag",
         "get_benchmark",
+        "log_call_status",
     ]
     for persona in ("stonewaller", "lowballer", "upseller", "firm"):
         assert by_name[persona].tool_names == []

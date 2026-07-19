@@ -13,7 +13,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from . import crud
+from .agent_factory import CALL_OUTCOMES
 from .api import QuoteCreate, _get_or_404, _total_first_year
+from .bridge import set_call_outcome
 from .vertical import load_vertical
 
 
@@ -148,6 +150,34 @@ def log_quote(body: QuoteCreate) -> dict[str, Any]:
         "flagged": quote["flagged"],
         "flag_reason": quote["flag_reason"],
     }
+
+
+class CallStatusUpdate(BaseModel):
+    call_id: str
+    outcome: str
+    callback_at: str | None = None
+    notes: str | None = None
+
+
+@tools_router.post("/log_call_status")
+def log_call_status(body: CallStatusUpdate) -> dict[str, Any]:
+    """Explicit ground truth for how a call ended, set by the negotiator itself.
+
+    Replaces guessing the outcome after the fact from transcript prose or from
+    whether a quote row exists (bridge.derive_outcome) — that heuristic stays
+    as a fallback for calls where the agent never calls this tool, but an
+    explicit call here always wins (bridge.finalize_call preserves it).
+    """
+    if body.outcome not in CALL_OUTCOMES:
+        raise HTTPException(status_code=422, detail=f"outcome must be one of {CALL_OUTCOMES}")
+    _get_or_404(crud.get_call(body.call_id))
+    fields: dict[str, Any] = {"outcome": body.outcome}
+    if body.callback_at is not None:
+        fields["callback_at"] = body.callback_at
+    if body.notes is not None:
+        fields["callback_note"] = body.notes
+    call = set_call_outcome(body.call_id, fields)
+    return {"call_id": call["id"], "outcome": call["outcome"]}
 
 
 class LeverageRequest(BaseModel):

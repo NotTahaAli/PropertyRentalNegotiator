@@ -146,4 +146,4 @@ def test_second_vertical_config_swaps_cleanly():
     agents = {a.name for a in build_agents(config)}
     assert {"estimator", "negotiator", "stonewaller", "lowballer", "upseller", "firm"} <= agents
     tools = {t["name"] for t in build_tool_schemas(config)}
-    assert tools == {"log_quote", "get_leverage", "check_redflag", "get_benchmark"}
+    assert tools == {"log_quote", "get_leverage", "check_redflag", "get_benchmark", "log_call_status"}

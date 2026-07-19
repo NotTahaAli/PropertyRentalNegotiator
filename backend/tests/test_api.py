@@ -529,6 +529,8 @@ def _signed_headers(body: str, secret: str = WEBHOOK_SECRET) -> dict:
 
 def test_post_call_webhook_valid_signature_writes_call(monkeypatch):
     monkeypatch.setenv("ELEVENLABS_WEBHOOK_SECRET", WEBHOOK_SECRET)
+    # No outcome logged yet (bridge.finalize_call's preserve-guard reads this).
+    monkeypatch.setattr(crud, "get_call", lambda id: None)
     updates = []
 
     def fake_update_call(id, fields):
@@ -1090,6 +1092,7 @@ def test_end_call_recovery_auto_blocks_declined_dealer(monkeypatch):
 
 def test_post_call_webhook_declined_transcript_auto_blocks_dealer(monkeypatch):
     monkeypatch.setenv("ELEVENLABS_WEBHOOK_SECRET", WEBHOOK_SECRET)
+    monkeypatch.setattr(crud, "get_call", lambda id: None)
     monkeypatch.setattr(
         crud, "update_call", lambda id, fields: {"id": id, "dealer_id": "d1", **fields}
     )
