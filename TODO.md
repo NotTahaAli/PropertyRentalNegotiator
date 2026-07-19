@@ -25,24 +25,6 @@ an item; delete resolved items instead of checking them off.
   event at `https://negotiator-backend.onrender.com/webhooks/post-call`
   (transcript + outcome written to the `calls` row).
 
-## Blocked: K7 live verification
-
-- **`TAVILY_API_KEY` not live anywhere reachable** — key was reportedly
-  added on Render, but a 2026-07-19 live probe against the deployed backend
-  (two `POST /specs` runs, location "Gulberg Lahore", confirmed test user
-  `k7-live-verify@gmail.com`) got `benchmark_json: null`,
-  `dealers_discovered: 0`, and `get_benchmark` `source: "fallback"` both
-  times — Tavily is silently failing server-side (missing/typo'd env var or
-  service not redeployed after the env change; `fetch_benchmark` swallows
-  all errors by design). Key is also absent from local `backend/.env`
-  (presence-checked, not read). Fix: re-check the Render env var name +
-  trigger a redeploy, and add the key locally, then re-run the probe:
-  `POST /specs` should return populated `benchmark_json`
-  `{per_sqft_low, per_sqft_high}`, tavily dealer rows (`persona="human"`),
-  and `POST /tools/get_benchmark` `source: "cached"`. Same run also
-  live-verifies the K11 discovery hardening: no duplicate dealer names, no
-  blank names, no portal/directory junk (Zameen/OLX/Graana).
-
 ## Blocked: K11 reflag has no UI caller
 
 - **`POST /specs/{id}/reflag` is curl-only** — endpoint is live (JWT +
@@ -70,6 +52,18 @@ an item; delete resolved items instead of checking them off.
 
 ## Resolved
 
+- K7 live verification: `TAVILY_API_KEY` now set locally + on Render,
+  live-verified 2026-07-19 (probe user `k7-live-verify@gmail.com`, test
+  specs cleaned up after). Dealer discovery works both local and deployed:
+  `POST /specs` ("Gulberg Lahore") inserted 4 real tavily dealer rows
+  (`persona="human"`), and the K11 hardening held live — no duplicates, no
+  blanks, no portal/directory junk. Benchmark extraction returns None on
+  this query: Tavily snippets are Zameen listing-index pages (counts, no
+  per-sqft figures), so the never-guess extractor correctly nulls out and
+  `get_benchmark` serves the config fallback (`source: "fallback"`) — the
+  designed fail-soft path, not a bug; `source: "cached"` only happens when
+  search snippets actually state a range. Also fixed `benchmark_query` typo
+  in `vertical.json` ("rentn" -> "rent"); didn't change the outcome.
 - `make_agents` re-run for K4/K7 prompt+schema changes (`binding` required
   in `log_quote` schema, written-quote + friction-handling prompt updates):
   user re-ran `uv run python -m app.make_agents` with live keys 2026-07-19;
