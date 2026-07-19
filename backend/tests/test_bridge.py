@@ -126,6 +126,34 @@ def test_derive_outcome_quote_with_comma_separated_amount():
     assert bridge.derive_outcome(transcript) == "quote"
 
 
+def test_derive_outcome_quote_with_spelled_out_thousand():
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "The monthly rent is twenty thousand rupees."},
+    ]
+    assert bridge.derive_outcome(transcript) == "quote"
+
+
+def test_derive_outcome_quote_with_spelled_out_lakh():
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "It will cost one lakh fifty per month."},
+    ]
+    assert bridge.derive_outcome(transcript) == "quote"
+
+
+def test_derive_outcome_ignores_plural_thousands_of():
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "Thousands of customers pass by daily."},
+    ]
+    assert bridge.derive_outcome(transcript) == "callback"
+
+
+def test_derive_outcome_ignores_lac_inside_other_words():
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "This place is great, I will call you back."},
+    ]
+    assert bridge.derive_outcome(transcript) == "callback"
+
+
 def test_derive_outcome_callback_when_transcript_empty():
     assert bridge.derive_outcome([]) == "callback"
 

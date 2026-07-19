@@ -36,9 +36,10 @@ _SILENCE_CHUNK_B64 = base64.b64encode(
     b"\x00" * int(SAMPLE_RATE * SAMPLE_WIDTH * SILENCE_CHUNK_SECONDS)
 ).decode()
 
-# ponytail: 4+ digit number (commas stripped) = money in PKR; misses spelled-out
-# amounts ("eighty five thousand") — webhook/quotes table is the ground truth anyway.
-_QUOTE_NUMBER_RE = re.compile(r"\d{4,}")
+# ponytail: 4+ digit number (commas stripped) or a singular money scale word
+# = money in PKR. Singular only: "thousands of customers" is not a quote.
+# Webhook/quotes table is the ground truth anyway.
+_QUOTE_NUMBER_RE = re.compile(r"\d{4,}|\b(?:thousand|lakh|lac|crore|million)\b")
 _DECLINE_PHRASES = ("not interested", "no deal", "not available", "already rented")
 _CALLBACK_PHRASES = ("call you back", "call back", "callback")
 
