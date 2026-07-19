@@ -38,6 +38,17 @@ export interface DealerCallState {
 
 const IDLE: DealerCallState = { state: "idle", transcript: [], quotes: [] };
 
+// A round that doesn't re-touch a property must never make that property's
+// last known quote disappear — the negotiator is now instructed to confirm
+// (or update) a prior quote every follow-up call, but a call that ends early
+// or covers only some properties shouldn't blank out the others. Upsert by
+// property_ref instead of replacing the array wholesale.
+function mergeQuotesByProperty(existing: Quote[], fresh: Quote[]): Quote[] {
+  const byProp = new Map(existing.map((q) => [q.property_ref ?? "", q]));
+  for (const q of fresh) byProp.set(q.property_ref ?? "", q);
+  return [...byProp.values()];
+}
+
 export function useCallCenter(specId: string) {
   const [dealers, setDealers] = useState<Dealer[] | null>(null);
   const [dealersError, setDealersError] = useState<string | null>(null);
@@ -87,6 +98,20 @@ export function useCallCenter(specId: string) {
       return { ...prev, [dealerId]: { ...cur, ...p } };
     });
   }, []);
+
+  // Like patch, but freshQuotes are upserted by property_ref onto whatever
+  // quotes are already known for this dealer instead of replacing the array
+  // — see mergeQuotesByProperty. Pass undefined to leave quotes untouched.
+  const patchMergingQuotes = useCallback(
+    (dealerId: string, fields: Partial<DealerCallState>, freshQuotes?: Quote[]) => {
+      setCalls((prev) => {
+        const cur = prev[dealerId] ?? IDLE;
+        const quotes = freshQuotes !== undefined ? mergeQuotesByProperty(cur.quotes, freshQuotes) : cur.quotes;
+        return { ...prev, [dealerId]: { ...cur, ...fields, quotes } };
+      });
+    },
+    []
+  );
 
   // local mirror of the backend's auto-block (see finalize_call): a call that
   // settles "declined" flips the dealer's status without waiting on a refetch.
@@ -163,10 +188,12 @@ export function useCallCenter(specId: string) {
           );
           if (call.status === "running") {
             // live quotes: log_quote writes rows mid-call, so surface them as
-            // soon as they land instead of waiting for the call to complete
+            // soon as they land instead of waiting for the call to complete.
+            // Merged onto existing quotes — a round that hasn't (yet, or ever)
+            // touched a property must not blank out its last known quote.
             try {
               const qs = await listQuotes(callId);
-              if (qs.length > 0) patch(dealerId, { quotes: qs });
+              if (qs.length > 0) patchMergingQuotes(dealerId, {}, qs);
             } catch {}
             return;
           }
@@ -191,21 +218,27 @@ export function useCallCenter(specId: string) {
           try {
             recordingUrl = await getRecordingUrl(callId);
           } catch {}
-          patch(dealerId, {
-            state: "done",
-            transcript: call.transcript_json ?? [],
-            // Quotes we actually fetched outrank the stored outcome. Without
-            // this, a call that produced a real itemised quote could still show
-            // "Dealer asked for a callback — no numbers committed".
-            // Leave undefined when the backend recorded no outcome. Defaulting to
-            // "callback" made the UI assert "no numbers committed" about a call it
-            // knows nothing about — a claim it can't back.
-            outcome: quotes && quotes.length > 0 ? "quote" : call.outcome ?? undefined,
-            ...(quotes !== undefined ? { quotes } : {}),
-            recordingUrl,
-            callbackAt: call.callback_at,
-            callbackNote: call.callback_note,
-          });
+          patchMergingQuotes(
+            dealerId,
+            {
+              state: "done",
+              transcript: call.transcript_json ?? [],
+              // Quotes we actually fetched outrank the stored outcome. Without
+              // this, a call that produced a real itemised quote could still show
+              // "Dealer asked for a callback — no numbers committed".
+              // Leave undefined when the backend recorded no outcome. Defaulting to
+              // "callback" made the UI assert "no numbers committed" about a call it
+              // knows nothing about — a claim it can't back.
+              outcome: quotes && quotes.length > 0 ? "quote" : call.outcome ?? undefined,
+              recordingUrl,
+              callbackAt: call.callback_at,
+              callbackNote: call.callback_note,
+            },
+            // Merged onto whatever quotes this round already surfaced live (or
+            // hydration seeded from earlier rounds) — undefined means the
+            // fetch failed, so leave existing quotes alone rather than blank them.
+            quotes
+          );
           if (call.outcome === "declined") markDeclined(dealerId);
         } catch {
           // transient poll error — keep polling; surface soft error
@@ -216,7 +249,7 @@ export function useCallCenter(specId: string) {
       }, POLL_MS);
       addTimer(dealerId, poll);
     },
-    [patch, addTimer, clearTimers, markDeclined]
+    [patch, patchMergingQuotes, addTimer, clearTimers, markDeclined]
   );
 
   // hydrate dealer states from real call history on load — without this the
@@ -260,21 +293,31 @@ export function useCallCenter(specId: string) {
       for (const dealer of dealers) {
         const c = latestByDealer.get(dealer.id);
         if (!c) continue;
+        // Merge every one of this dealer's rounds' quotes, oldest first, so a
+        // round that hasn't (yet, or ever) re-touched a property doesn't make
+        // that property's last known quote disappear on reload — see
+        // mergeQuotesByProperty. The live/latest call, if still running, is
+        // skipped here and fetched instead by pollUntilDone below.
+        let quotes: Quote[] = [];
+        for (const call of byDealer[dealer.id] ?? []) {
+          if (call.id === c.id && call.status === "running") continue;
+          try {
+            quotes = mergeQuotesByProperty(quotes, await listQuotes(call.id));
+          } catch {}
+        }
+        if (cancelled) return;
         if (c.status === "running") {
           hydratePatch(dealer.id, {
             state: "live",
             round: c.round,
             callId: c.id,
             transcript: c.transcript_json ?? [],
+            quotes,
           });
           pollUntilDone(dealer.id, c.id);
           continue;
         }
-        let quotes: Quote[] = [];
         let recordingUrl: string | null = null;
-        try {
-          quotes = await listQuotes(c.id);
-        } catch {}
         try {
           recordingUrl = await getRecordingUrl(c.id);
         } catch {}

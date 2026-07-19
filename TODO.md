@@ -29,19 +29,6 @@ an item; delete resolved items instead of checking them off.
   declined call against Supabase to confirm the row actually updates and the
   frontend poll picks it up.
 
-## Blocked: frontend K8 → backend wiring
-
-- **Post-call webhook: live delivery unverified for roleplay calls** —
-  backend endpoint `POST /webhooks/post-call` is built and HMAC-verified;
-  `ELEVENLABS_WEBHOOK_SECRET` is set locally and on Render, dashboard webhook
-  exists. 2026-07-19 bridge-mode call live-verified `log_call_status` and
-  quote logging, but bridge writes transcript/outcome itself
-  (`bridge.finalize_call`) and never needs this webhook — it stays unverified
-  until a **roleplay** call is tested (human answers as dealer via
-  `RoleplaySession.tsx`), since that path has no bridge and depends entirely
-  on the webhook to land transcript + outcome on the `calls` row. User plans
-  to test roleplay next.
-
 ## Resolved: make_agents re-run (dealer-first flip + negotiator end_call)
 
 - **Done 2026-07-19** — `uv run python -m app.make_agents` re-run live:
@@ -133,6 +120,35 @@ an item; delete resolved items instead of checking them off.
 
 ## Resolved
 
+- **Post-call webhook never fired for roleplay calls** — workspace-level
+  webhook was registered and enabled (confirmed in the ElevenLabs dashboard:
+  URL, ID, enabled toggle all correct) but the negotiator agent still had
+  post-call webhooks off at the **agent level** — ElevenLabs supports
+  enabling webhooks at both workspace and individual-agent scope, and only
+  the workspace one had ever been touched. No code in this repo controls
+  that agent-level setting (`agent_factory.py`/`make_agents.py` have nothing
+  webhook-related for it — it's dashboard-only). Enabled it on the negotiator
+  agent in the dashboard; roleplay call now completes and lands
+  transcript/outcome via `POST /webhooks/post-call` as designed.
+- **Follow-up calls could make a real quote silently disappear** — two
+  compounding issues, both in the "don't repeat a stale number" area.
+  (1) Prompt told the negotiator "Do not ask them to repeat these terms" for
+  a dealer's prior quote and to just push for an improvement — meaning a
+  follow-up call could end without ever calling `log_quote` again for a
+  property nobody re-confirmed. (2) The frontend then compounded it:
+  `DealerCallState.quotes` was always set to *only* whatever the current
+  round's own `listQuotes(callId)` returned — live, on completion, and even
+  on page-reload hydration — so a round that didn't re-touch a property made
+  that property's last known quote vanish from the UI, even though the row
+  was still safely in Supabase (rounds never share a `call_id`, so nothing
+  was ever actually deleted). Fixed both: `api._prior_call_summary` now
+  tells the negotiator to confirm the prior quote is still accurate every
+  follow-up call and log it again either way (same numbers if confirmed,
+  updated numbers if not) — `backend/tests/test_api.py`. Frontend
+  `useCallCenter.ts` now upserts fresh quotes onto existing ones by
+  `property_ref` (`mergeQuotesByProperty`) at all three write sites (live
+  poll, round completion, and initial hydration merged across *every* round,
+  not just the latest) instead of replacing the array wholesale.
 - **2026-07-19 deploy round** — Supabase migrations pushed (`dealers.status`,
   `calls.callback_at`/`callback_note`) and confirmed up to date; `make_agents`
   re-run live, carrying this session's `get_leverage` reshape, required

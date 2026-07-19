@@ -313,8 +313,11 @@ def _prior_call_summary(prior_calls: list[dict[str, Any]], quote: dict[str, Any]
             terms.append(f"{quote['annual_increment_pct']:g}% yearly increase")
         parts.append("They previously quoted: " + ", ".join(terms) + ".")
         parts.append(
-            "Do not ask them to repeat these terms. Acknowledge the quote you already "
-            "have and push for an improvement on it."
+            "Confirm with the dealer that this is still accurate before relying on it — "
+            "availability, rent, or terms may have changed since. If they confirm nothing "
+            "changed, log it again via log_quote so this call has its own record; if "
+            "anything changed, log the updated numbers instead. Either way, push for an "
+            "improvement on the current number."
         )
     else:
         parts.append("They did not give you a quote last time.")

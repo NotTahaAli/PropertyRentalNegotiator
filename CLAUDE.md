@@ -103,6 +103,26 @@ passes two things into the negotiator's prompt: `round_number` and a
 transcript). The dealer persona is fed its **own last quote** rather than fresh
 band-generated numbers, so it doesn't contradict itself between rounds.
 
+`prior_call_summary` instructs the negotiator to **confirm the prior quote is
+still accurate every follow-up call** — not assume it — since availability,
+rent, or terms may have changed; it must call `log_quote` again either way
+(same numbers if confirmed, updated numbers if not), so every round leaves
+its own record. Never skip logging just because nothing changed — a round
+that doesn't re-touch a property is exactly what makes that property's quote
+disappear from the frontend's "current" view (see next paragraph), so
+silence there is read as "not confirmed," not "unchanged."
+
+A quote is never deleted at the data layer regardless — every round is a
+distinct `call_id`, so an earlier round's `quotes` row is untouched by a
+later one. What used to disappear was purely a **frontend** display bug:
+`useCallCenter`'s `DealerCallState.quotes` was set to only the current
+round's own fetched quotes, at every write site (live poll, completion, and
+hydration), so a round that didn't re-touch a property blanked it from view
+even though the row was still in Supabase. Fixed via `mergeQuotesByProperty`
+— every quote write now upserts by `property_ref` onto whatever's already
+known rather than replacing the array, and hydration merges across *every*
+round for a dealer, not just the latest.
+
 Strictly this dealer's own history. Other dealers' bids reach the agent only
 through `get_leverage` — see the guardrail below; a prompt variable is exactly
 the kind of "other path" it forbids. `test_prior_calls_excludes_other_dealers_and_the_current_call`
