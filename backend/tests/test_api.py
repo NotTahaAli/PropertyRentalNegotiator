@@ -710,6 +710,67 @@ def test_patch_dealer_404s_for_non_owner(monkeypatch):
     assert response.status_code == 404
 
 
+def test_patch_dealer_updates_status(monkeypatch):
+    monkeypatch.setattr(crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1", "status": "active"})
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    updates = {}
+
+    def fake_update_dealer(id, fields):
+        updates.update({"id": id, **fields})
+        return {"id": id, "spec_id": "s1", **fields}
+
+    monkeypatch.setattr(crud, "update_dealer", fake_update_dealer)
+    _as(USER_A)
+
+    response = client.patch("/dealers/d1", json={"status": "declined"})
+
+    assert response.status_code == 200
+    assert updates == {"id": "d1", "status": "declined"}
+    assert response.json()["status"] == "declined"
+
+
+def test_patch_dealer_rejects_unknown_status(monkeypatch):
+    monkeypatch.setattr(crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1"})
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    monkeypatch.setattr(
+        crud, "update_dealer", lambda id, fields: pytest.fail("updated invalid status")
+    )
+    _as(USER_A)
+
+    response = client.patch("/dealers/d1", json={"status": "banned"})
+
+    assert response.status_code == 422
+
+
+def test_patch_dealer_rejects_empty_body(monkeypatch):
+    monkeypatch.setattr(crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1"})
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    _as(USER_A)
+
+    response = client.patch("/dealers/d1", json={})
+
+    assert response.status_code == 422
+
+
+def test_start_call_422s_for_declined_dealer(monkeypatch):
+    monkeypatch.setattr(
+        crud,
+        "get_spec",
+        lambda id: {"id": "s1", "user_id": USER_A, "spec_json": {"area_sqft": 500}},
+    )
+    monkeypatch.setattr(
+        crud,
+        "get_dealer",
+        lambda id: {"id": "d1", "spec_id": "s1", "persona": "firm", "status": "declined"},
+    )
+    monkeypatch.setattr(crud, "create_call", lambda row: pytest.fail("call row created"))
+    _as(USER_A)
+
+    response = client.post("/calls/start", json={"spec_id": "s1", "dealer_id": "d1"})
+
+    assert response.status_code == 422
+
+
 # --- POST /specs/{id}/reflag (K11) ---------------------------------------
 
 REFLAG_SPEC = {
@@ -966,3 +1027,104 @@ def test_end_call_leaves_completed_call_alone(monkeypatch):
 
     assert response.status_code == 200
     assert updates == []
+
+
+def test_end_call_recovery_auto_blocks_declined_dealer(monkeypatch):
+    monkeypatch.setattr(
+        crud,
+        "get_call",
+        lambda id: {
+            "id": "c1",
+            "spec_id": "s1",
+            "status": "running",
+            "transcript_json": [{"line": 1, "speaker": "dealer", "text": "not interested"}],
+        },
+    )
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    monkeypatch.setattr(api, "request_stop", lambda call_id: False)
+    monkeypatch.setattr(
+        crud, "update_call", lambda id, fields: {"id": id, "dealer_id": "d1", **fields}
+    )
+    blocked = []
+    monkeypatch.setattr(
+        crud, "update_dealer", lambda id, fields: blocked.append((id, fields))
+    )
+    _as(USER_A)
+
+    response = client.post("/calls/c1/end")
+
+    assert response.status_code == 200
+    assert blocked == [("d1", {"status": "declined"})]
+
+
+def test_post_call_webhook_declined_transcript_auto_blocks_dealer(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_WEBHOOK_SECRET", WEBHOOK_SECRET)
+    monkeypatch.setattr(
+        crud, "update_call", lambda id, fields: {"id": id, "dealer_id": "d1", **fields}
+    )
+    blocked = []
+    monkeypatch.setattr(
+        crud, "update_dealer", lambda id, fields: blocked.append((id, fields))
+    )
+
+    event = {
+        "type": "post_call_transcription",
+        "data": {
+            "conversation_initiation_client_data": {"dynamic_variables": {"call_id": "c1"}},
+            "transcript": [
+                {"role": "user", "message": "Sorry, not interested, already rented."},
+            ],
+        },
+    }
+    body = json.dumps(event)
+    response = client.post(
+        "/webhooks/post-call", content=body, headers=_signed_headers(body)
+    )
+
+    assert response.status_code == 200
+    assert blocked == [("d1", {"status": "declined"})]
+
+
+# --- _dealer_dynamic_variables (persona randomized anchor figures) -------
+
+import re
+
+from app.vertical import load_vertical
+
+
+def test_dealer_dynamic_variables_covers_every_persona_placeholder():
+    config = load_vertical()
+    spec = {"id": "s1", "spec_json": {"location": "Gulberg", "floor": "ground", "budget_monthly_rent": 100000}}
+    for persona in config.persona_prompts:
+        placeholders = set(re.findall(r"{{(\w+)}}", config.persona_prompts[persona]))
+        returned = api._dealer_dynamic_variables(spec, persona)
+        assert placeholders <= set(returned), f"{persona} references unfilled vars: {placeholders - set(returned)}"
+
+
+def test_dealer_dynamic_variables_stay_within_persona_bands():
+    # no area_sqft -> _benchmark's monthly_low/high stay None -> base_rent
+    # falls back to budget_monthly_rent, a value fixed by the test (not the
+    # benchmark_fallback config), so the expected ratio math below is exact.
+    spec = {"id": "s1", "spec_json": {"location": "Gulberg", "floor": "ground", "budget_monthly_rent": 100000}}
+    base_rent = spec["spec_json"]["budget_monthly_rent"]
+    for persona, band in api.PERSONA_BANDS.items():
+        v = api._dealer_dynamic_variables(spec, persona)
+        rent_ratio = v["asking_rent"] / base_rent
+        assert band["rent"][0] - 0.01 <= rent_ratio <= band["rent"][1] + 0.01
+        assert band["advance"][0] <= v["advance_months"] <= band["advance"][1]
+        assert band["increment"][0] <= v["annual_increment_pct"] <= band["increment"][1]
+        commission_ratio = v["commission"] / v["asking_rent"]
+        assert band["commission_mo"][0] - 0.02 <= commission_ratio <= band["commission_mo"][1] + 0.02
+        maint_ratio = v["maintenance"] / v["asking_rent"]
+        assert band["maint_pct"][0] - 0.02 <= maint_ratio <= band["maint_pct"][1] + 0.02
+
+
+def test_dealer_dynamic_variables_defaults_missing_spec_fields():
+    # location/floor/area_sqft missing entirely — every key must still be
+    # present (ElevenLabs breaks on an unfilled {{var}}), never omitted.
+    spec = {"id": "s1", "spec_json": {}}
+    v = api._dealer_dynamic_variables(spec, "firm")
+    assert v["location"] == "the area"
+    assert v["floor"] == ""
+    assert v["area_sqft"] == ""
+    assert v["asking_rent"] > 0

@@ -2,6 +2,7 @@ import type {
   CallRow,
   CallStartResponse,
   Dealer,
+  DealerStatus,
   IntakeSubmitResponse,
   JobSpec,
   ParsedDoc,
@@ -95,19 +96,19 @@ export async function listDealers(specId: string): Promise<Dealer[]> {
 
 export async function updateDealer(
   dealerId: string,
-  persona: Persona
+  patch: { persona?: Persona; status?: DealerStatus }
 ): Promise<Dealer> {
   if (USE_MOCKS) {
     await new Promise((r) => setTimeout(r, 300));
     const dealer = MOCK_DEALERS.find((d) => d.id === dealerId);
     if (!dealer) throw new Error("dealer not found");
-    dealer.persona = persona;
+    Object.assign(dealer, patch);
     return { ...dealer };
   }
   const r = await fetch(`${BASE}/dealers/${encodeURIComponent(dealerId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ persona }),
+    body: JSON.stringify(patch),
   });
   if (!r.ok) throw new Error(`update dealer failed: ${r.status}`);
   return r.json();

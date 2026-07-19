@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,7 +23,7 @@ from pydantic import BaseModel
 from . import crud, live, storage
 from .auth import _decode, get_current_user_id
 from .benchmark import discover_dealers, fetch_benchmark
-from .bridge import derive_outcome, request_stop, run_bridge
+from .bridge import derive_outcome, finalize_call, request_stop, run_bridge
 from .seed import seed_dealers
 from .vertical import load_vertical
 
@@ -46,7 +47,8 @@ class DealerCreate(BaseModel):
 
 
 class DealerUpdate(BaseModel):
-    persona: str
+    persona: Optional[str] = None
+    status: Optional[str] = None
 
 
 class CallCreate(BaseModel):
@@ -202,16 +204,25 @@ def get_dealer(
     return dealer
 
 
+DEALER_STATUSES = {"active", "declined"}
+
+
 @dealers_router.patch("/{id}")
 def update_dealer(
     id: str, body: DealerUpdate, user_id: str = Depends(get_current_user_id)
 ) -> dict[str, Any]:
     dealer = _get_or_404(crud.get_dealer(id))
     _require_spec_owner(dealer["spec_id"], user_id)
-    valid_personas = set(load_vertical().persona_prompts) | {"human"}
-    if body.persona not in valid_personas:
-        raise HTTPException(status_code=422, detail=f"persona must be one of {sorted(valid_personas)}")
-    return crud.update_dealer(id, {"persona": body.persona})
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not fields:
+        raise HTTPException(status_code=422, detail="no fields to update")
+    if "persona" in fields:
+        valid_personas = set(load_vertical().persona_prompts) | {"human"}
+        if fields["persona"] not in valid_personas:
+            raise HTTPException(status_code=422, detail=f"persona must be one of {sorted(valid_personas)}")
+    if "status" in fields and fields["status"] not in DEALER_STATUSES:
+        raise HTTPException(status_code=422, detail=f"status must be one of {sorted(DEALER_STATUSES)}")
+    return crud.update_dealer(id, fields)
 
 
 @dealers_router.get("")
@@ -264,6 +275,51 @@ def _dynamic_variables(spec: dict[str, Any], call_id: str, dealer_id: str) -> di
     }
 
 
+# ponytail: bands as code constants; move to vertical.json only if a second
+# vertical needs different bands. rent/commission_mo/maint_pct are multipliers
+# of the base rent; advance/increment are literal months/percent ranges.
+PERSONA_BANDS = {
+    "stonewaller": {"rent": (1.00, 1.15), "advance": (4, 6), "commission_mo": (0.8, 1.2), "maint_pct": (0.04, 0.07), "increment": (8, 12)},
+    "lowballer": {"rent": (0.60, 0.75), "advance": (1, 2), "commission_mo": (0.4, 0.6), "maint_pct": (0.02, 0.04), "increment": (5, 8)},
+    "upseller": {"rent": (1.00, 1.10), "advance": (5, 6), "commission_mo": (1.2, 1.6), "maint_pct": (0.08, 0.12), "increment": (10, 15)},
+    "firm": {"rent": (0.95, 1.05), "advance": (2, 2), "commission_mo": (1.0, 1.0), "maint_pct": (0.03, 0.05), "increment": (5, 5)},
+}
+
+
+def _round1000(x: float) -> float:
+    return round(x / 1000) * 1000
+
+
+def _dealer_dynamic_variables(spec: dict[str, Any], persona: str) -> dict[str, Any]:
+    from .tools import _benchmark  # local: tools.py imports from api.py
+
+    config = load_vertical()
+    spec_json = spec.get("spec_json") or {}
+    area = spec_json.get("area_sqft")
+    bench = _benchmark(spec)
+    if bench["monthly_low"] and bench["monthly_high"]:
+        base_rent = (bench["monthly_low"] + bench["monthly_high"]) / 2
+    elif spec_json.get("budget_monthly_rent"):
+        base_rent = spec_json["budget_monthly_rent"]
+    else:
+        fallback_per_sqft = (config.benchmark_fallback.per_sqft_low + config.benchmark_fallback.per_sqft_high) / 2
+        base_rent = fallback_per_sqft * (area or 500)
+
+    band = PERSONA_BANDS.get(persona, PERSONA_BANDS["firm"])
+    asking_rent = _round1000(base_rent * random.uniform(*band["rent"]))
+    return {
+        "asking_rent": asking_rent,
+        "advance_months": round(random.uniform(*band["advance"])),
+        "commission": _round1000(asking_rent * random.uniform(*band["commission_mo"])),
+        "maintenance": _round1000(asking_rent * random.uniform(*band["maint_pct"])),
+        "annual_increment_pct": round(random.uniform(*band["increment"])),
+        "currency": config.currency,
+        "location": spec_json.get("location") or "the area",
+        "area_sqft": area if area is not None else "",
+        "floor": spec_json.get("floor") or "",
+    }
+
+
 @calls_router.post("/start")
 async def start_call(
     body: CallStartRequest, user_id: str = Depends(get_current_user_id)
@@ -272,6 +328,8 @@ async def start_call(
     dealer = _get_or_404(crud.get_dealer(body.dealer_id))
     if dealer["spec_id"] != body.spec_id:
         raise HTTPException(status_code=404, detail="not found")
+    if dealer.get("status") == "declined":
+        raise HTTPException(status_code=422, detail="dealer has declined; reactivate to call again")
     if body.mode != "roleplay" and dealer["persona"] not in _agent_manifest():
         raise HTTPException(
             status_code=422,
@@ -298,6 +356,7 @@ async def start_call(
             "dynamic_variables": dynamic_vars,
         }
 
+    dealer_vars = _dealer_dynamic_variables(spec, dealer["persona"])
     # keep a strong reference: a bare create_task can be garbage-collected
     # mid-run, killing the bridge without its finalize (row stuck "running")
     task = asyncio.create_task(
@@ -308,6 +367,7 @@ async def start_call(
             agents["negotiator"],
             agents[dealer["persona"]],
             dynamic_vars,
+            dealer_vars,
         )
     )
     _bridge_tasks.add(task)
@@ -323,7 +383,7 @@ def end_call(id: str, user_id: str = Depends(get_current_user_id)) -> dict[str, 
     # mid-call and the bridge's finalize never ran. Finalize here so the
     # frontend poll converges instead of showing LIVE forever.
     if not stopping and call.get("status") == "running":
-        crud.update_call(
+        finalize_call(
             id,
             {
                 "status": "completed",
@@ -367,7 +427,7 @@ async def post_call_webhook(request: Request) -> dict[str, Any]:
             (t for t in data.get("transcript") or [] if t.get("message")), start=1
         )
     ]
-    crud.update_call(
+    finalize_call(
         call_id,
         {
             "transcript_json": transcript,

@@ -5,6 +5,33 @@ external calls, or an unbuilt K-component — not on missing understanding of
 the code. Update this file in the same commit as whatever resolves or adds
 an item; delete resolved items instead of checking them off.
 
+## Pending: this session's config/schema changes need to be deployed
+
+- **Supabase migration push** — `20260719090212_dealer_status.sql` adds
+  `dealers.status` (default `'active'`, check `active|declined`). Run
+  `supabase db push` against the linked project before the decline/reactivate
+  UI or the `start_call` 422-on-declined check can work against real data.
+- **`make_agents` re-run** — `vertical.json` prompts changed (no-narration
+  rule on negotiator + estimator, "written quote not agreement" language,
+  stronger vague-answer probing, wording-variety instructions) and all 4
+  persona `AgentDef`s now carry `end_call=True` (`agent_factory.py`). None of
+  this reaches live ElevenLabs agents until `uv run python -m app.make_agents`
+  is re-run with live keys.
+- **Live-verify persona anchor figures** — `api._dealer_dynamic_variables`
+  computes randomized per-call `{{asking_rent}}`/`{{advance_months}}`/etc. and
+  `run_bridge` now passes them as the dealer leg's `dynamic_variables`; unit
+  tests confirm the contract (every `{{var}}` a persona prompt references is a
+  key the function returns) but nobody has heard a live persona actually speak
+  concrete numbers yet. Needs one real bridge call per persona.
+- **Live-verify persona `end_call`** — personas can now hang up on their own
+  (previously only the negotiator could). Watch that a persona doesn't cut a
+  real negotiation short — prompt scopes it to "call is over" only.
+- **Live-verify decline auto-block** — a call whose `derive_outcome` lands on
+  `"declined"` now flips `dealers.status` to `"declined"` via
+  `bridge.finalize_call` (unit-tested with mocked `crud`); needs one real
+  declined call against Supabase to confirm the row actually updates and the
+  frontend poll picks it up.
+
 ## Blocked: frontend K8 → backend wiring
 
 - **Role-play widget embed in DealerCard** — the "Answer as dealer" toggle

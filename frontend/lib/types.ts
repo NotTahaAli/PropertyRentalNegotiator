@@ -98,6 +98,9 @@ export const PERSONAS: readonly Persona[] = [
   "human",
 ];
 
+// undefined/missing = active; only "declined" ever blocks calling.
+export type DealerStatus = "active" | "declined";
+
 export interface Dealer {
   id: string;
   spec_id: string;
@@ -105,6 +108,7 @@ export interface Dealer {
   persona: Persona;
   phone_label?: string | null;
   source?: string | null;
+  status?: DealerStatus;
 }
 
 export interface TranscriptLine {
