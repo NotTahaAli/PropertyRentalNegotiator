@@ -147,6 +147,26 @@ export interface Quote {
   flag_reason?: string | null;
 }
 
+// ── Past-calls dashboard (/) — reuses JobSpec/Dealer/CallRow, no forking ──
+
+export interface SpecListItem {
+  id: string;
+  created_at?: string | null;
+  confirmed: boolean;
+  spec: Partial<JobSpec>; // from spec_json
+}
+
+export type ProgressState =
+  | { kind: "intake" }
+  | { kind: "ready_to_call" }
+  | { kind: "calling"; done: number; total: number }
+  | { kind: "report_ready" };
+
+export interface SpecListEntry {
+  item: SpecListItem;
+  progress: ProgressState;
+}
+
 // ── K10 Report — reuses Quote/CallOutcome/Persona as-is, no forking ──
 
 export interface ReportRow {

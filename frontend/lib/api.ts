@@ -8,13 +8,17 @@ import type {
   Persona,
   Quote,
   Report,
+  SpecListEntry,
+  SpecListItem,
 } from "./types";
 import {
   MOCK_DEALERS,
   MOCK_PARSE_RENT_AGREEMENT,
   MOCK_PARSE_REQUIREMENTS,
   MOCK_REPORT,
+  MOCK_SPEC_FIXTURES,
 } from "./mocks";
+import { deriveProgress } from "./dashboard";
 import { getAccessToken } from "@/components/auth/AuthProvider";
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
@@ -137,6 +141,41 @@ export async function getRecordingUrl(callId: string): Promise<string | null> {
 
 export async function listQuotes(callId: string): Promise<Quote[]> {
   return getJson(`/quotes?call_id=${encodeURIComponent(callId)}`);
+}
+
+export async function listCalls(specId: string): Promise<CallRow[]> {
+  return getJson(`/calls?spec_id=${encodeURIComponent(specId)}`);
+}
+
+// ── Past-calls dashboard (/) ──
+
+export async function listSpecs(): Promise<SpecListItem[]> {
+  const rows = await getJson<
+    { id: string; created_at?: string; confirmed: boolean; spec_json: Partial<JobSpec> }[]
+  >("/specs");
+  return rows.map((row) => ({
+    id: row.id,
+    created_at: row.created_at,
+    confirmed: row.confirmed,
+    spec: row.spec_json,
+  }));
+}
+
+export async function listSpecsWithProgress(): Promise<SpecListEntry[]> {
+  if (USE_MOCKS) {
+    await new Promise((r) => setTimeout(r, 400));
+    return MOCK_SPEC_FIXTURES.map((f) => ({
+      item: f.item,
+      progress: deriveProgress(f.item, f.dealers, f.calls),
+    }));
+  }
+  const specs = await listSpecs();
+  return Promise.all(
+    specs.map(async (item) => {
+      const [dealers, calls] = await Promise.all([listDealers(item.id), listCalls(item.id)]);
+      return { item, progress: deriveProgress(item, dealers, calls) };
+    })
+  );
 }
 
 // ── K10 Report ──

@@ -1,10 +1,12 @@
 import type {
   CallOutcome,
+  CallRow,
   Dealer,
   JobSpec,
   ParsedDoc,
   Quote,
   Report,
+  SpecListItem,
   TranscriptLine,
 } from "./types";
 
@@ -260,6 +262,58 @@ export const MOCK_REPORT: Report = {
     "flagged: quoted far enough under benchmark to warrant scrutiny, with no written agreement " +
     "offered, so it is not recommended as the top pick despite the number.",
 };
+
+// ── Past-calls dashboard mock — raw fixtures, run through the same
+// deriveProgress() the real data path uses (lib/dashboard.ts), not a
+// hardcoded status. Spec 3 deliberately reuses MOCK_REPORT.spec_id/dealers
+// so "View report" from the dashboard opens the real mock report.
+export const MOCK_SPEC_FIXTURES: { item: SpecListItem; dealers: Dealer[]; calls: CallRow[] }[] = [
+  {
+    item: {
+      id: "spec_mock_002",
+      created_at: "2026-07-18T09:15:00Z",
+      confirmed: false,
+      spec: { location: "DHA Phase 5, Lahore", business_type: "cafe" },
+    },
+    dealers: [],
+    calls: [],
+  },
+  {
+    item: {
+      id: "spec_mock_003",
+      created_at: "2026-07-18T14:40:00Z",
+      confirmed: true,
+      spec: { location: "Bahria Town, Rawalpindi", business_type: "pharmacy" },
+    },
+    dealers: [
+      { id: "d3_stonewaller", spec_id: "spec_mock_003", name: "Stonewaller Dealer", persona: "stonewaller", source: "seed" },
+      { id: "d3_lowballer", spec_id: "spec_mock_003", name: "Lowballer Dealer", persona: "lowballer", source: "seed" },
+      { id: "d3_upseller", spec_id: "spec_mock_003", name: "Upseller Dealer", persona: "upseller", source: "seed" },
+      { id: "d3_firm", spec_id: "spec_mock_003", name: "Firm Dealer", persona: "firm", source: "seed" },
+    ],
+    calls: [
+      { id: "c3_1", spec_id: "spec_mock_003", dealer_id: "d3_stonewaller", round: 1, status: "completed", outcome: "declined" },
+      { id: "c3_2", spec_id: "spec_mock_003", dealer_id: "d3_lowballer", round: 1, status: "completed", outcome: "quote" },
+    ],
+  },
+  {
+    item: {
+      id: MOCK_REPORT.spec_id,
+      created_at: "2026-07-17T11:00:00Z",
+      confirmed: true,
+      spec: { location: MOCK_SPEC.location, business_type: MOCK_SPEC.business_type },
+    },
+    dealers: MOCK_DEALERS.filter((d) => d.persona !== "human"),
+    calls: MOCK_REPORT.rows.map((r) => ({
+      id: `call_${r.dealer_id}`,
+      spec_id: MOCK_REPORT.spec_id,
+      dealer_id: r.dealer_id,
+      round: r.round,
+      status: "completed" as const,
+      outcome: r.outcome,
+    })),
+  },
+];
 
 // 0.5s of silent 16-bit mono PCM as a WAV blob URL — placeholder recording.
 export function mockRecordingUrl(): string {

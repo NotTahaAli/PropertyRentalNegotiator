@@ -18,7 +18,7 @@ export default function SignupPage() {
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
 
   useEffect(() => {
-    if (!loading && user) router.replace("/");
+    if (!loading && user) router.replace("/dashboard");
   }, [loading, user, router]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -35,7 +35,7 @@ export default function SignupPage() {
       setNeedsConfirmation(true);
       return;
     }
-    router.replace("/");
+    router.replace("/dashboard");
   }
 
   if (needsConfirmation) {
