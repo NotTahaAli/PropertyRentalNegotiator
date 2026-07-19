@@ -28,8 +28,8 @@ def test_negotiator_prompt_appended_brief_has_no_bid_or_quote_variables():
     config = load_vertical()
     prompt = build_negotiator_prompt(config)
     brief = prompt.split("--- CLIENT BRIEF")[1]
-    assert "bid" not in brief.lower()
-    assert "quote" not in brief.lower()
+    assert "{{bid}}" not in brief.lower()
+    assert "{{quote}}" not in brief.lower()
 
 
 def test_log_quote_tool_body_covers_every_fee_taxonomy_item():

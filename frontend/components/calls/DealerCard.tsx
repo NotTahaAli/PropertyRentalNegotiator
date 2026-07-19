@@ -77,6 +77,16 @@ export default function DealerCard({
           {dealer.phone_label && (
             <p className="mt-1 font-mono text-[10px] text-text-dim">{dealer.phone_label}</p>
           )}
+          {(dealer.phone || dealer.rating != null) && (
+            <p className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-text-dim">
+              {dealer.phone && <span>{dealer.phone}</span>}
+              {dealer.rating != null && (
+                <span title={dealer.rating_source ? `Source: ${dealer.rating_source}` : undefined}>
+                  ★ {dealer.rating.toFixed(1)}
+                </span>
+              )}
+            </p>
+          )}
           <label
             className="mt-2 flex items-center gap-2 text-[11px] text-text-secondary"
             onClick={(e) => e.stopPropagation()}

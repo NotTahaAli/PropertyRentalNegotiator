@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Negotiator — Implementation Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0d1117;          /* night console background */
+    --panel:#151b23;        /* raised panel */
+    --panel-2:#1b2330;      /* deeper panel */
+    --line:#2a3442;         /* hairline */
+    --text:#dde3ea;
+    --muted:#8b97a5;
+    --amber:#ffb224;        /* ON AIR — recording light */
+    --green:#3dd68c;        /* done / go */
+    --red:#f2555a;          /* risk */
+    --blue:#6cb2ff;         /* info / links */
+    --mono:'IBM Plex Mono',monospace;
+    --disp:'Bricolage Grotesque',sans-serif;
+    --body:'Instrument Sans',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ink);color:var(--text);font-family:var(--body);font-size:15.5px;line-height:1.55}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px 120px}
+
+  /* ---------- header ---------- */
+  header{padding:56px 0 36px;border-bottom:1px solid var(--line)}
+  .onair{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;color:var(--amber);text-transform:uppercase;margin-bottom:18px}
+  .onair::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 10px var(--amber);animation:pulse 1.6s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion: reduce){.onair::before{animation:none}}
+  h1{font-family:var(--disp);font-weight:800;font-size:clamp(38px,6vw,62px);line-height:1.02;letter-spacing:-.02em}
+  h1 em{font-style:normal;color:var(--amber)}
+  .sub{color:var(--muted);margin-top:14px;max-width:640px}
+  .facts{display:flex;flex-wrap:wrap;gap:0;margin-top:28px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .fact{flex:1 1 160px;padding:14px 18px;border-right:1px solid var(--line);background:var(--panel)}
+  .fact:last-child{border-right:0}
+  .fact b{display:block;font-family:var(--mono);font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px;font-weight:500}
+  .fact span{font-weight:600}
+
+  /* ---------- structure ---------- */
+  section{padding:44px 0 8px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:10px}
+  h2{font-family:var(--disp);font-weight:700;font-size:28px;letter-spacing:-.01em;margin-bottom:18px}
+  h3{font-family:var(--disp);font-weight:700;font-size:18px;margin:26px 0 10px}
+  p{margin-bottom:12px}
+  p.lead{font-size:17px;max-width:760px}
+  .muted{color:var(--muted)}
+  code,pre{font-family:var(--mono);font-size:13px}
+  code{background:var(--panel-2);padding:2px 6px;border-radius:5px;color:var(--blue)}
+  pre{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:18px;overflow-x:auto;line-height:1.6;margin:14px 0}
+  pre code{background:none;padding:0;color:var(--text)}
+  .k{color:var(--amber)} .s{color:var(--green)} .c{color:var(--muted)} .n{color:var(--blue)}
+
+  /* locked decisions */
+  .locks{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin:16px 0}
+  .lock{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:12px 14px;font-size:14px}
+  .lock::before{content:"LOCKED";font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--green);display:block;margin-bottom:5px}
+
+  /* pipeline */
+  .pipe{display:flex;flex-wrap:wrap;gap:0;align-items:stretch;margin:18px 0}
+  .stage{flex:1 1 200px;background:var(--panel);border:1px solid var(--line);padding:16px;position:relative}
+  .stage:first-child{border-radius:10px 0 0 10px}
+  .stage:last-child{border-radius:0 10px 10px 0}
+  .stage+.stage{border-left:0}
+  .stage b{font-family:var(--disp);display:block;margin-bottom:6px}
+  .stage small{color:var(--muted);display:block;line-height:1.5}
+  .stage .tag{font-family:var(--mono);font-size:10px;color:var(--amber);letter-spacing:.14em}
+
+  /* tables */
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+  th{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);text-align:left;font-weight:500;padding:9px 12px;border-bottom:1px solid var(--line)}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:hover td{background:rgba(255,178,36,.03)}
+  .owner{font-family:var(--mono);font-weight:600;font-size:12px;padding:2px 8px;border-radius:4px;white-space:nowrap}
+  .oa{background:rgba(108,178,255,.12);color:var(--blue)}
+  .ob{background:rgba(61,214,140,.12);color:var(--green)}
+  .oc{background:rgba(255,178,36,.12);color:var(--amber)}
+  .oall{background:rgba(221,227,234,.1);color:var(--text)}
+  .risk-hi{color:var(--red);font-weight:600}
+  .risk-md{color:var(--amber)}
+  .risk-lo{color:var(--green)}
+
+  /* shift board — signature */
+  .board{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:22px;margin:18px 0;overflow-x:auto}
+  .board-grid{display:grid;grid-template-columns:70px repeat(16,minmax(46px,1fr));gap:4px;min-width:860px}
+  .bg-h{font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center;padding-bottom:6px}
+  .bg-lane{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;align-items:center}
+  .blk{height:34px;border-radius:5px;font-family:var(--mono);font-size:10px;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden;padding:0 4px;letter-spacing:.02em}
+  .b-work{background:rgba(255,178,36,.16);border:1px solid rgba(255,178,36,.5);color:var(--amber)}
+  .b-solo{background:rgba(108,178,255,.14);border:1px solid rgba(108,178,255,.45);color:var(--blue)}
+  .b-sleep{background:var(--panel-2);border:1px dashed var(--line);color:#57616d}
+  .b-away{background:rgba(242,85,90,.08);border:1px dashed rgba(242,85,90,.4);color:var(--red)}
+  .b-crunch{background:rgba(61,214,140,.14);border:1px solid rgba(61,214,140,.5);color:var(--green)}
+  .board-note{font-size:13px;color:var(--muted);margin-top:12px}
+
+  /* phases */
+  .phase{border-left:2px solid var(--amber);padding:4px 0 4px 20px;margin:22px 0}
+  .phase h4{font-family:var(--disp);font-size:16px;margin-bottom:2px}
+  .phase .ptime{font-family:var(--mono);font-size:11px;color:var(--amber);letter-spacing:.1em}
+  .phase ul{margin:8px 0 0 18px}
+  .phase li{margin-bottom:5px;font-size:14.5px}
+
+  /* callouts */
+  .call{border:1px solid var(--line);border-left:3px solid var(--amber);background:var(--panel);border-radius:0 10px 10px 0;padding:14px 18px;margin:16px 0;font-size:14.5px}
+  .call.danger{border-left-color:var(--red)}
+  .call.go{border-left-color:var(--green)}
+  .call b:first-child{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;display:block;margin-bottom:5px}
+  .call.danger b:first-child{color:var(--red)}
+  .call.go b:first-child{color:var(--green)}
+  .call:not(.danger):not(.go) b:first-child{color:var(--amber)}
+
+  ul.plain{margin:8px 0 14px 20px}
+  ul.plain li{margin-bottom:6px}
+  ol{margin:8px 0 14px 22px}
+  ol li{margin-bottom:6px}
+
+  /* checklist */
+  .check li{list-style:none;position:relative;padding-left:26px;margin-bottom:8px}
+  .check li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:700}
+  .check{margin:10px 0 14px}
+
+  /* agents */
+  .agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;margin:16px 0}
+  .agent{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .agent b{font-family:var(--disp);display:block;margin-bottom:4px}
+  .agent .role{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);display:block;margin-bottom:8px}
+  .agent p{font-size:13.5px;color:var(--muted);margin:0}
+
+  nav{position:sticky;top:0;background:rgba(13,17,23,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:10;padding:10px 0;margin:0 -28px;padding-left:28px;padding-right:28px}
+  nav a{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted);text-decoration:none;margin-right:18px;text-transform:uppercase}
+  nav a:hover{color:var(--amber)}
+  a{color:var(--blue)}
+  @media(max-width:700px){.facts{flex-direction:column}.fact{border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="onair">Live plan · Hack-Nation Challenge 01 · ElevenLabs</div>
+  <h1>The Negotiator<br><em>Commercial Shop Rental — Pakistan</em></h1>
+  <p class="sub">Voice agents that call property dealers, extract itemised rent quotes, leverage bids against each other, and report the best deal with transcript evidence. One vertical config file. Three people. One night.</p>
+  <div class="facts">
+    <div class="fact"><b>Deadline</b><span>~5:00 PM today</span></div>
+    <div class="fact"><b>Team</b><span>A · B · C (3 devs)</span></div>
+    <div class="fact"><b>Cost budget</b><span>PKR 0 — free tiers only</span></div>
+    <div class="fact"><b>Keys in hand</b><span>ElevenLabs · OpenAI · Tavily</span></div>
+    <div class="fact"><b>Buffer</b><span>7–10 AM dead zone + 30 min pre-submit</span></div>
+  </div>
+</header>
+
+<nav>
+  <a href="#locked">Locked</a><a href="#arch">Architecture</a><a href="#data">Data</a><a href="#config">Config</a><a href="#agents">Agents</a><a href="#components">Components</a><a href="#shifts">Shift Board</a><a href="#risks">Risks</a><a href="#demo">Demo</a><a href="#submit">Submission</a><a href="#win">Win Moves</a>
+</nav>
+
+<!-- ================= LOCKED DECISIONS ================= -->
+<section id="locked">
+  <div class="eyebrow">00 · Decisions already made</div>
+  <h2>Locked. Do not re-litigate at 3 AM.</h2>
+  <div class="locks">
+    <div class="lock">Vertical: <b>commercial shop rental</b>, Pakistan property dealers</div>
+    <div class="lock">Counterparties: <b>counter-agents</b> (4 personas) + optional human role-play</div>
+    <div class="lock">Transport: <b>web audio only</b> — ElevenLabs WebSocket/WebRTC. No Twilio, no PSTN</div>
+    <div class="lock">Language: <b>English only</b>. Urdu = super-optional stretch</div>
+    <div class="lock">Stack: <b>FastAPI (Render free)</b> + <b>Next.js (Vercel free)</b></div>
+    <div class="lock">DB: <b>Supabase</b> free tier (Postgres + dashboard)</div>
+    <div class="lock">Benchmarks: <b>Tavily live search</b> of Zameen averages at intake + cached fallback</div>
+    <div class="lock">Docs intake: <b>rent agreement</b> (current-setup baseline) + <b>written requirements doc</b></div>
+    <div class="lock">Vertical = <b>config file</b>, not code. Agent prompts generated from it</div>
+    <div class="lock">AI disclosure: honest when asked; confirms real client; keeps negotiating</div>
+    <div class="lock">Red-flag: 30%+ under benchmark → confirm scope on call, flag in report, never auto-#1</div>
+  </div>
+  <div class="call danger">
+    <b>Render cold-start trap</b>
+    Render free sleeps after 15 min idle → 50 s cold start when a judge clicks the link. Fix at hour zero: register the backend health endpoint on <a href="https://cron-job.org">cron-job.org</a> (free), ping every 10 minutes, keep it warm for the full 10-day judging window.
+  </div>
+</section>
+
+<!-- ================= ARCHITECTURE ================= -->
+<section id="arch">
+  <div class="eyebrow">01 · Architecture</div>
+  <h2>Three beats, one spec, zero fabrication</h2>
+
+  <div class="pipe">
+    <div class="stage"><span class="tag">BEAT 1</span><b>Estimator</b><small>Voice interview (ElevenLabs widget) + doc upload (rent agreement / requirements). Both paths emit the <em>same</em> JSON job spec. User confirms before any call.</small></div>
+    <div class="stage"><span class="tag">BEAT 2</span><b>Caller</b><small>Negotiator agent calls each dealer (counter-agent or role-play human). Identical spec pitch every call. Logs itemised quotes mid-call via tool webhook.</small></div>
+    <div class="stage"><span class="tag">BEAT 3</span><b>Closer</b><small>Second-round calls with leverage from logged bids. Red-flag engine screens quotes. Report ranks all quotes with transcript citations.</small></div>
+  </div>
+
+  <h3>Services</h3>
+  <table>
+    <tr><th>Service</th><th>Host</th><th>Responsibilities</th></tr>
+    <tr><td><b>Next.js frontend</b></td><td>Vercel free</td><td>Pages: Dashboard · Intake (voice widget + upload) · Spec Confirm · Call Center (live/monitor) · Report. ElevenLabs React SDK for all browser audio.</td></tr>
+    <tr><td><b>FastAPI backend</b></td><td>Render free + pinger</td><td>Doc parsing (OpenAI), benchmark service (Tavily + cache), spec/quote CRUD, <b>agent tool webhooks</b>, agent-to-agent audio bridge, report generation.</td></tr>
+    <tr><td><b>Supabase</b></td><td>Free tier</td><td>Postgres: specs, dealers, calls, quotes, transcripts, flags. Dashboard = live debugging window during integration.</td></tr>
+    <tr><td><b>ElevenLabs Agents</b></td><td>Free/trial credits</td><td>6 agents (below), created programmatically by the agent factory script from <code>vertical.json</code>.</td></tr>
+  </table>
+
+  <h3>Agent-to-agent bridge (highest-risk component)</h3>
+  <p>FastAPI asyncio task opens two ElevenLabs conversation WebSockets — Negotiator and a Dealer persona — and cross-pipes audio: Negotiator output → Dealer input, Dealer output → Negotiator input. Mixed stream is saved as the call recording and streamed to the browser so judges hear it live. Transcripts arrive on both sockets as events; store both sides.</p>
+  <div class="call go">
+    <b>Guaranteed fallback</b>
+    If the bridge fights back past its 3-hour timebox: <b>role-play mode</b>. A teammate opens the Dealer page in a second browser tab/laptop and answers the Negotiator's call by mic, playing the persona from a one-page character card. Needs zero extra code (same widget as intake) and the brief explicitly allows it. The demo cannot die on this component.
+  </div>
+
+  <h3>The honesty guardrail — say this in the pitch</h3>
+  <p>The Negotiator has no free-text knowledge of other bids. Its only source of leverage is the <code>get_leverage</code> tool, which returns <b>real quotes logged in Supabase during earlier calls</b>. If no bid exists, the tool returns nothing and the prompt instructs the agent to negotiate on fees and terms instead. Fabricating a competing bid is not a prompt hope — it is <b>architecturally impossible</b>. Judges score honesty constraints explicitly; this is the strongest possible answer.</p>
+</section>
+
+<!-- ================= DATA MODEL ================= -->
+<section id="data">
+  <div class="eyebrow">02 · Data model</div>
+  <h2>Supabase schema</h2>
+  <pre><code><span class="c">-- keep it this small; resist adding tables at 4 AM</span>
+<span class="k">specs</span>      (id, created_at, vertical, status, spec_json <span class="n">jsonb</span>, benchmark_json <span class="n">jsonb</span>, confirmed <span class="n">bool</span>)
+<span class="k">dealers</span>    (id, spec_id, name, persona, phone_label, source)          <span class="c">-- persona: stonewaller|lowballer|upseller|firm|human</span>
+<span class="k">calls</span>      (id, spec_id, dealer_id, round <span class="n">int</span>, status, started_at, ended_at,
+            recording_url, transcript_json <span class="n">jsonb</span>, outcome)             <span class="c">-- outcome: quote|callback|declined</span>
+<span class="k">quotes</span>     (id, call_id, dealer_id, monthly_rent <span class="n">int</span>, advance_months <span class="n">int</span>, commission <span class="n">int</span>,
+            maintenance <span class="n">int</span>, other_fees <span class="n">jsonb</span>, total_first_year <span class="n">int</span>,  <span class="c">-- computed, the comparison key</span>
+            binding <span class="n">bool</span>, notes, flagged <span class="n">bool</span>, flag_reason)
+</code></pre>
+  <ul class="plain">
+    <li><code>total_first_year</code> = 12×rent + advance + commission + 12×maintenance + other fees. Single number makes deliberately-incomparable fee structures comparable — that is the product thesis in one column.</li>
+    <li><code>transcript_json</code> stores numbered utterances → report cites <code>[call 3, line 41]</code>.</li>
+    <li>Frontend reads via FastAPI, not Supabase directly — keeps keys server-side, one auth story.</li>
+  </ul>
+</section>
+
+<!-- ================= CONFIG ================= -->
+<section id="config">
+  <div class="eyebrow">03 · Vertical as configuration</div>
+  <h2><code>vertical.json</code> — the judge magnet</h2>
+  <p>Everything vertical-specific lives here. The agent factory script reads it and creates/updates all six ElevenLabs agents. Swapping to auto-repair = new JSON + rerun script. Demo this swap live in 30 seconds.</p>
+  <pre><code>{
+  <span class="k">"vertical"</span>: <span class="s">"commercial_shop_rental_pk"</span>,
+  <span class="k">"currency"</span>: <span class="s">"PKR"</span>,
+  <span class="k">"spec_schema"</span>: {              <span class="c">// what Estimator must fill; drives interview questions</span>
+    <span class="k">"area_sqft"</span>: <span class="s">"number"</span>, <span class="k">"location"</span>: <span class="s">"string"</span>, <span class="k">"floor"</span>: <span class="s">"enum:ground|first|basement"</span>,
+    <span class="k">"business_type"</span>: <span class="s">"string"</span>, <span class="k">"frontage_ft"</span>: <span class="s">"number"</span>, <span class="k">"lease_years"</span>: <span class="s">"number"</span>,
+    <span class="k">"parking"</span>: <span class="s">"bool"</span>, <span class="k">"move_in"</span>: <span class="s">"date"</span>, <span class="k">"current_rent"</span>: <span class="s">"number?"</span>  <span class="c">// from rent agreement</span>
+  },
+  <span class="k">"fee_taxonomy"</span>: [<span class="s">"monthly_rent"</span>,<span class="s">"advance_months"</span>,<span class="s">"commission"</span>,<span class="s">"maintenance"</span>,<span class="s">"annual_increment_pct"</span>],
+  <span class="k">"benchmark_query"</span>: <span class="s">"average shop rent per sqft {location} Pakistan zameen 2026"</span>,
+  <span class="k">"benchmark_fallback"</span>: { <span class="s">"per_sqft_low"</span>: 180, <span class="s">"per_sqft_high"</span>: 450 },   <span class="c">// hand-checked cache</span>
+  <span class="k">"red_flags"</span>: [
+    { <span class="k">"rule"</span>: <span class="s">"below_market_pct"</span>, <span class="k">"threshold"</span>: 30, <span class="k">"action"</span>: <span class="s">"confirm_then_flag"</span> },
+    { <span class="k">"rule"</span>: <span class="s">"no_written_quote"</span>, <span class="k">"action"</span>: <span class="s">"flag"</span> },
+    { <span class="k">"rule"</span>: <span class="s">"advance_months_gt"</span>, <span class="k">"threshold"</span>: 6, <span class="k">"action"</span>: <span class="s">"flag"</span> }
+  ],
+  <span class="k">"negotiation_levers"</span>: [<span class="s">"competing_bid"</span>,<span class="s">"longer_lease_for_lower_rent"</span>,<span class="s">"commission_waiver"</span>,<span class="s">"cap_annual_increment"</span>],
+  <span class="k">"disclosure_policy"</span>: <span class="s">"admit_ai_if_asked; affirm real client; never name client; continue call"</span>,
+  <span class="k">"persona_prompts"</span>: { <span class="s">"stonewaller"</span>: <span class="s">"..."</span>, <span class="s">"lowballer"</span>: <span class="s">"..."</span>, <span class="s">"upseller"</span>: <span class="s">"..."</span>, <span class="s">"firm"</span>: <span class="s">"..."</span> }
+}</code></pre>
+  <div class="call">
+    <b>Prove it, don't claim it</b>
+    Prepare a second config (<code>auto_repair_pk.json</code> — even rough) before the demo recording. "Config not code" claimed = 0 points. Demonstrated in 30 seconds on camera = memorable.
+  </div>
+</section>
+
+<!-- ================= AGENTS ================= -->
+<section id="agents">
+  <div class="eyebrow">04 · The cast</div>
+  <h2>Six agents, one factory script</h2>
+  <div class="agents">
+    <div class="agent"><span class="role">Intake</span><b>The Estimator</b><p>Interviews like a pro estimator: fills every <code>spec_schema</code> field, ≤6 questions if doc upload pre-filled most. Confirms parsed rent-agreement data verbally ("your current shop is 400 sqft at 85k — correct?"). Emits final spec via tool call.</p></div>
+    <div class="agent"><span class="role">Caller / Closer</span><b>The Negotiator</b><p>Pitches spec identically each call. Extracts every fee in <code>fee_taxonomy</code> — refuses vague ranges, asks "what's included in that?". Round 2: pulls <code>get_leverage</code>, pushes price-match, questions fees, ends every call with structured outcome via <code>log_quote</code>.</p></div>
+    <div class="agent"><span class="role">Dealer 1</span><b>The Stonewaller</b><p>"Rates depend, sahib. Come to the office." Gives numbers only under persistent, specific questioning. Tests extraction stamina. Concedes a range → exact figure when spec is detailed.</p></div>
+    <div class="agent"><span class="role">Dealer 2</span><b>The Lowballer</b><p>Headline rent 35–45% under market. Advance, commission, "society maintenance" surface only when asked. The red-flag system's demo target. Never volunteers total cost.</p></div>
+    <div class="agent"><span class="role">Dealer 3</span><b>The Upseller</b><p>Pushes the bigger corner shop, "another party is viewing tomorrow", pressure tactics. Tests spec discipline — Negotiator must decline the upsell and return to the confirmed spec.</p></div>
+    <div class="agent"><span class="role">Dealer 4</span><b>Firm-but-Fair</b><p>Quotes a realistic price, holds it — until presented with a genuine logged competing bid, then matches or trims 5–8% and waives commission. <b>This call is the mandatory "price moves from leverage" success criterion.</b></p></div>
+  </div>
+  <h3>Negotiator tool belt (webhooks → FastAPI)</h3>
+  <table>
+    <tr><th>Tool</th><th>Does</th></tr>
+    <tr><td><code>log_quote</code></td><td>Writes itemised quote row mid-call. Validates against fee taxonomy; missing fee → agent instructed to ask again before hanging up.</td></tr>
+    <tr><td><code>get_leverage</code></td><td>Returns best real logged bid(s) for this spec. Empty if none exist — fabrication impossible.</td></tr>
+    <tr><td><code>check_redflag</code></td><td>Quote vs benchmark. Returns <code>confirm_then_flag</code> → agent asks the scope-confirmation question live on the call.</td></tr>
+    <tr><td><code>get_benchmark</code></td><td>Cached Tavily result for the spec's location (fetched once at intake, not per call).</td></tr>
+  </table>
+</section>
+
+<!-- ================= COMPONENTS ================= -->
+<section id="components">
+  <div class="eyebrow">05 · Work breakdown</div>
+  <h2>12 components, independently executable</h2>
+  <p>Each has one owner, a defined interface, and a definition of done. Interfaces agreed in the first 30 minutes mean nobody blocks on anybody overnight.</p>
+  <table>
+    <tr><th>#</th><th>Component</th><th>Owner</th><th>Est</th><th>Needs</th><th>Interface / Definition of done</th></tr>
+    <tr><td>K1</td><td><b>vertical.json schema + shop_rental config</b></td><td><span class="owner oc">C</span></td><td>1.5h</td><td>—</td><td>File in repo, validated by a 20-line pydantic model. Everything downstream imports this. <b>Do first.</b></td></tr>
+    <tr><td>K2</td><td><b>Supabase schema + FastAPI data layer</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>—</td><td>4 tables live; CRUD helpers; seed script inserts 4 dealers + 1 sample spec.</td></tr>
+    <tr><td>K3</td><td><b>Agent factory script</b></td><td><span class="owner ob">B</span></td><td>2h</td><td>K1</td><td><code>python make_agents.py vertical.json</code> creates/updates all 6 ElevenLabs agents (prompts, voices, tools). Idempotent.</td></tr>
+    <tr><td>K4</td><td><b>Tool webhooks ×4</b></td><td><span class="owner ob">B</span></td><td>2h</td><td>K2</td><td>Endpoints live on Render; test with curl before wiring agents. <code>log_quote</code> row visible in Supabase dashboard.</td></tr>
+    <tr><td>K5</td><td><b>Agent-to-agent audio bridge</b></td><td><span class="owner ob">B</span></td><td>3h <span class="risk-hi">⚠ timebox</span></td><td>K3</td><td><code>POST /calls/start</code> {spec_id, dealer_id} → bridged call, recording saved, transcript stored, live audio relayed to browser. <b>If not working by hour 3 → role-play fallback, move on.</b></td></tr>
+    <tr><td>K6</td><td><b>Doc parser</b></td><td><span class="owner oc">C</span></td><td>1.5h</td><td>K1</td><td><code>POST /parse</code> (PDF/image of rent agreement or requirements doc) → partial spec JSON via OpenAI. Unknown fields null, never guessed.</td></tr>
+    <tr><td>K7</td><td><b>Benchmark service</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K1</td><td>Tavily query → per-sqft range, cached per spec; falls back to config values on failure/timeout (3 s).</td></tr>
+    <tr><td>K8</td><td><b>Intake UI</b> (voice widget + upload + spec confirm)</td><td><span class="owner oa">A</span></td><td>3h</td><td>K1 shape only</td><td>User talks to Estimator, uploads docs, reviews editable spec form, hits Confirm. Works against mock endpoints first.</td></tr>
+    <tr><td>K9</td><td><b>Call Center UI</b></td><td><span class="owner oa">A</span></td><td>2.5h</td><td>K5 shape only</td><td>Dealer list, Call buttons, live status, audio player, transcript stream. Also hosts role-play "Answer as dealer" mode (same widget, dealer persona).</td></tr>
+    <tr><td>K10</td><td><b>Report generator + UI</b></td><td><span class="owner oc">C</span> gen · <span class="owner oa">A</span> UI</td><td>2h + 2h</td><td>K2, K4</td><td>Ranked table by <code>total_first_year</code>, flags with reasons, recommended deal, plain-language why, transcript citations, recording links.</td></tr>
+    <tr><td>K11</td><td><b>Red-flag engine</b></td><td><span class="owner oc">C</span></td><td>1h</td><td>K1, K7</td><td>Config-driven rules inside K4/K10. Unit-tested against the Lowballer's numbers: catches, confirms, flags, never ranks #1 silently.</td></tr>
+    <tr><td>K12</td><td><b>Demo assets</b></td><td><span class="owner oall">ALL</span></td><td>rolling</td><td>everything</td><td>Golden call recordings, demo video, tech pitch video, 2nd vertical config, submission answers, repo zip.</td></tr>
+  </table>
+  <div class="call">
+    <b>Anti-block rule</b>
+    A builds every UI against hardcoded mock JSON matching K1 shapes, swaps to real endpoints at integration. B and C never wait on frontend. The only true serialization is K1 → everything, which is why K1 happens in the first 90 minutes.
+  </div>
+</section>
+
+<!-- ================= SHIFT BOARD ================= -->
+<section id="shifts">
+  <div class="eyebrow">06 · The shift board</div>
+  <h2>Who is on air, when</h2>
+  <div class="board">
+    <div class="board-grid">
+      <div class="bg-h"></div>
+      <div class="bg-h">1a</div><div class="bg-h">2a</div><div class="bg-h">3a</div><div class="bg-h">4a</div><div class="bg-h">5a</div><div class="bg-h">6a</div><div class="bg-h">7a</div><div class="bg-h">8a</div><div class="bg-h">9a</div><div class="bg-h">10a</div><div class="bg-h">11a</div><div class="bg-h">12p</div><div class="bg-h">1p</div><div class="bg-h">2p</div><div class="bg-h">3p</div><div class="bg-h">4–5p</div>
+
+      <div class="bg-lane">A</div>
+      <div class="blk b-work" style="grid-column:span 5">UI build · K8</div>
+      <div class="blk b-solo" style="grid-column:span 2">solo · K9/K10 UI</div>
+      <div class="blk b-sleep" style="grid-column:span 5">sleep</div>
+      <div class="blk b-crunch" style="grid-column:span 2">integrate + video</div>
+      <div class="blk b-away" style="grid-column:span 2">away 2–4:30</div>
+      <div class="blk b-crunch">final QA</div>
+
+      <div class="bg-lane">B</div>
+      <div class="blk b-work" style="grid-column:span 4">K3 K4 K5 bridge</div>
+      <div class="blk b-sleep" style="grid-column:span 7">sleep</div>
+      <div class="blk b-crunch" style="grid-column:span 2">integrate + calls</div>
+      <div class="blk b-crunch" style="grid-column:span 2">pitch · zip · deploy</div>
+      <div class="blk b-crunch">submit</div>
+
+      <div class="bg-lane">C</div>
+      <div class="blk b-work" style="grid-column:span 4">K1 K2 K6 K7 K11</div>
+      <div class="blk b-sleep" style="grid-column:span 5">sleep</div>
+      <div class="blk b-solo" style="grid-column:span 2">K10 gen · prompt QA</div>
+      <div class="blk b-crunch" style="grid-column:span 2">integrate + answers</div>
+      <div class="blk b-crunch" style="grid-column:span 2">pitch · answers</div>
+      <div class="blk b-crunch">submit</div>
+    </div>
+    <p class="board-note">Amber = night build · Blue = solo shift · Green = crunch/integration · Dashed = offline. 7–10 AM is a hard dead zone: schedule assumes <b>zero</b> work there. Anything done then is bonus buffer.</p>
+  </div>
+
+  <div class="phase"><span class="ptime">HOUR 0 · FIRST 30 MIN · ALL THREE</span><h4>Deploy skeleton before writing features</h4>
+    <ul>
+      <li>Repo + branch rules. Vercel and Render connected, hello-world deployed <b>now</b> — deployment risk dies at hour zero, not hour thirteen.</li>
+      <li>Supabase project created, keys in both environments. cron-job.org pinger registered.</li>
+      <li>Agree K1 JSON shapes verbally (15 min max). C writes them down as the pydantic model.</li>
+    </ul>
+  </div>
+  <div class="phase"><span class="ptime">1–5 AM · ALL THREE</span><h4>Parallel build night</h4>
+    <ul>
+      <li><b>A:</b> Next scaffold, layout system, Intake page with ElevenLabs widget, upload flow, Spec-Confirm form (mock data).</li>
+      <li><b>B:</b> FastAPI scaffold → K3 agent factory → K4 webhooks → K5 bridge prototype. Bridge timebox ends 5 AM sharp.</li>
+      <li><b>C:</b> K1 config → K2 schema/seed → K7 benchmark → K6 parser → K11 red-flag rules → persona prompt drafts.</li>
+      <li><b>~4 AM checkpoint (all still awake):</b> run one live intake + one live agent call end to end, however ugly. Record it — this is the insurance golden call.</li>
+    </ul>
+  </div>
+  <div class="phase"><span class="ptime">5–7 AM · A SOLO</span><h4>Quiet UI shift</h4>
+    <ul><li>Call Center UI and Report UI against mock data. No backend dependencies by design.</li><li>Before sleeping: push everything, leave a STATUS.md note for C.</li></ul>
+  </div>
+  <div class="phase"><span class="ptime">10 AM–12 PM · C SOLO</span><h4>Content + quality shift</h4>
+    <ul><li>K10 report generator against real logged quotes.</li><li>Prompt QA: run Negotiator vs each persona, tighten prompts until fees extract cleanly and red-flag confirmation fires.</li><li>Draft the 6 submission answers (they're prose — perfect solo work).</li></ul>
+  </div>
+  <div class="phase"><span class="ptime">12–2 PM · ALL THREE</span><h4>Integration + demo recording</h4>
+    <ul><li>Swap A's mocks for real endpoints. Full loop ×3: intake → 4 calls → leverage round → report.</li><li><b>Record the demo video before 2 PM while A is present.</b> A leaves at 2.</li></ul>
+  </div>
+  <div class="phase"><span class="ptime">2–4:30 PM · B + C</span><h4>Package</h4>
+    <ul><li>Tech pitch recording, repo zip, hosted-link cold-click test from a phone on mobile data, submission answers finalized.</li></ul>
+  </div>
+  <div class="phase"><span class="ptime">4:30–5 PM · ALL</span><h4>Submit with 30 min to spare</h4>
+    <ul><li>A returns, final review, submit by 4:45. Never submit at 4:59.</li></ul>
+  </div>
+</section>
+
+<!-- ================= RISKS ================= -->
+<section id="risks">
+  <div class="eyebrow">07 · Risk register</div>
+  <h2>What kills this, and the pre-agreed answer</h2>
+  <table>
+    <tr><th>Risk</th><th>Sev</th><th>Mitigation (decided now, not at 4 AM)</th></tr>
+    <tr><td>Agent-to-agent bridge fails (audio format, latency, echo loops)</td><td class="risk-hi">HIGH</td><td>3-hour timebox. Fallback = role-play mode via existing widget. Demo narrative unchanged: brief explicitly permits humans role-playing.</td></tr>
+    <tr><td>ElevenLabs free credits exhausted by testing</td><td class="risk-hi">HIGH</td><td>Test conversations short (2–3 min cap in agent settings). Prompt-iterate with text-mode agent testing where possible. Record golden calls early; if credits die, demo plays recordings + one live role-play.</td></tr>
+    <tr><td>Tavily returns junk for Pakistani rent averages</td><td class="risk-md">MED</td><td><code>benchmark_fallback</code> in config, hand-checked from Zameen tonight. 3 s timeout then fallback. Red-flag demo must never depend on live search.</td></tr>
+    <tr><td>Render cold start during judging</td><td class="risk-md">MED</td><td>cron-job.org pinger, hour zero. Test cold-click from phone before submitting.</td></tr>
+    <tr><td>7–10 AM dead zone swallows overrun</td><td class="risk-md">MED</td><td>Night goal = full ugly loop by 4 AM checkpoint. If missed, C's 10 AM shift re-priorities: loop first, polish never.</td></tr>
+    <tr><td>Two people asleep during a blocker</td><td class="risk-lo">LOW</td><td>STATUS.md handoff notes on every sign-off; mock-first UI contract means A/C solo shifts have no hard dependencies.</td></tr>
+    <tr><td>Scope creep (Urdu, real Twilio, Zameen scraping)</td><td class="risk-lo">LOW</td><td>All stretch items live below this line: <b>nothing stretch starts before a recorded end-to-end demo exists.</b></td></tr>
+  </table>
+</section>
+
+<!-- ================= DEMO ================= -->
+<section id="demo">
+  <div class="eyebrow">08 · Demo script</div>
+  <h2>Four mandatory moments, captioned on screen</h2>
+  <p>Judges score against the brief's checklist. Caption each moment explicitly in the video so no point is missed.</p>
+  <ol>
+    <li><b>Spec integrity</b> — upload rent agreement + requirements doc, voice interview confirms and fills gaps, user approves one JSON spec. Caption: <i>"One spec. Built by voice + documents. Reused verbatim in every call."</i></li>
+    <li><b>Three negotiation styles</b> — montage: Stonewaller cracks under specific questioning · Lowballer's hidden fees surface · Upseller deflected back to spec. Show <code>log_quote</code> rows landing in the dashboard live.</li>
+    <li><b>Price moves from leverage</b> — Firm-but-Fair call, round 2: Negotiator cites the real logged bid ("I have a documented offer at 78,000 all-in — can you match it?") → dealer trims rent + waives commission. Show the quote row update. Caption: <i>"Price changed because of leverage the agent gathered — not a script."</i></li>
+    <li><b>Honesty + red flags</b> — mid-call "am I talking to a robot?" → honest disclosure, call continues, quote survives. Then the report: Lowballer flagged with reason, <b>not</b> ranked #1; recommended deal explained in plain language with transcript citations. Finish with the 30-second config swap to auto-repair.</li>
+  </ol>
+</section>
+
+<!-- ================= SUBMISSION ================= -->
+<section id="submit">
+  <div class="eyebrow">09 · Submission package</div>
+  <h2>Deliverables checklist</h2>
+  <ul class="check">
+    <li>Hosted link (Vercel) — cold-clicked from a phone on mobile data before submitting</li>
+    <li>Recorded demo video (the 4 captioned moments, ≤ 5 min)</li>
+    <li>Recorded tech pitch (architecture, honesty guardrail, config-not-code, free-tier stack)</li>
+    <li>Repo zip + repo link (README with 5-minute local run instructions + architecture diagram)</li>
+    <li>Written answers ×6 (drafted by C at 10 AM, polished 2–4 PM):</li>
+  </ul>
+  <table>
+    <tr><th>Question</th><th>One-line angle (expand in prose)</th></tr>
+    <tr><td>Problem &amp; Challenge</td><td>Shop rents in Pakistan are phone-priced and dealer-gated; identical shops quote 3–5× apart; nobody has hours to call 8 dealers and normalize hidden fees (advance, commission, "maintenance").</td></tr>
+    <tr><td>Target Audience</td><td>Small-business owners leasing commercial shops — Pakistan first; same engine generalizes to any phone-priced market via config.</td></tr>
+    <tr><td>Solution &amp; Core Features</td><td>Voice intake + doc parsing → one confirmed spec → parallel agent calls with itemised extraction → leverage-based second round → ranked, transcript-cited report.</td></tr>
+    <tr><td>Unique Selling Proposition</td><td>The agent cannot lie by architecture (leverage only from logged real bids); red flags confirmed live on-call; vertical is a config file — proven on camera in 30 seconds.</td></tr>
+    <tr><td>Implementation &amp; Technology</td><td>ElevenLabs Agents (6, factory-generated), FastAPI tool webhooks, Next.js, Supabase, Tavily benchmarks, OpenAI doc parsing — 100% free tier, deployed and warm for 10 days.</td></tr>
+    <tr><td>Results &amp; Impact</td><td>In demo: X% saved vs first quote, N hidden fees surfaced, 1 lowball flagged. Frame as annual PKR saved per lease + hours of calls eliminated.</td></tr>
+  </table>
+</section>
+
+<!-- ================= WIN ================= -->
+<section id="win">
+  <div class="eyebrow">10 · Edge</div>
+  <h2>Six moves that outscore bigger builds</h2>
+  <ol>
+    <li><b>The 30-second config swap</b> is the cheapest large point-haul available. Rough second config is enough; the moment is what's scored.</li>
+    <li><b>Caption the four mandatory moments.</b> Judges grade checklists at speed; make every criterion impossible to miss.</li>
+    <li><b>Transcript citations in the report</b> (<code>[call 3, line 41]</code>) turn "trust us" into evidence — directly named in the success criteria.</li>
+    <li><b>Say "cannot lie by architecture" out loud</b> in the pitch. Most teams will answer honesty with "we prompted it not to." You have a structural answer.</li>
+    <li><b>Keep intake ≤ 6 spoken questions.</b> Doc parsing pre-fills; interview confirms. A 4-minute intake bores the video's first act.</li>
+    <li><b>Golden calls by 4 AM.</b> One recorded ugly-but-real end-to-end call is worth more than any feature added after it. It is the submission's insurance policy.</li>
+  </ol>
+  <div class="call go">
+    <b>North star</b>
+    A connected loop beats a polished fragment — the brief says so verbatim. Every hour, ask: does the loop still run end to end? If yes, polish. If no, fix the loop. Nothing else matters.
+  </div>
+</section>
+
+</div>
+</body>
+</html>

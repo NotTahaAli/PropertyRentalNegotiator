@@ -49,7 +49,16 @@ export default function RankedTable({ specId, rows, recommendedRowId }: RankedTa
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <PriceCell amount={row.quote?.total_first_year ?? null} emphasize={recommended} />
+                <div className="flex flex-col items-end gap-0.5">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xs text-text-dim">Term:</span>
+                    <PriceCell amount={row.total_term ?? row.quote?.total_term ?? row.quote?.total_first_year ?? null} emphasize={recommended} />
+                  </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xs text-text-dim">1st yr:</span>
+                    <PriceCell amount={row.quote?.total_first_year ?? null} emphasize={false} />
+                  </div>
+                </div>
                 <CitationLink specId={specId} callNumber={row.call_number} line={row.citation_line} />
               </div>
             </div>
@@ -57,6 +66,12 @@ export default function RankedTable({ specId, rows, recommendedRowId }: RankedTa
               <div className="mt-3">
                 <FlagChip reason={row.quote.flag_reason} />
               </div>
+            )}
+            {row.meets_deadline === false && (
+              <div className="mt-2 text-xs text-error font-medium">Misses delivery deadline</div>
+            )}
+            {row.meets_deadline === true && (
+              <div className="mt-2 text-xs text-success font-medium">Confirmed delivery</div>
             )}
           </div>
         );

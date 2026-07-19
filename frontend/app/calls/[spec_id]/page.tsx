@@ -6,7 +6,10 @@ import Button from "@/components/ui/Button";
 import DealerCard from "@/components/calls/DealerCard";
 import CallStatusPanel from "@/components/calls/CallStatusPanel";
 import QuoteChip from "@/components/calls/QuoteChip";
+import BenchmarkBadge from "@/components/spec/BenchmarkBadge";
 import { MOCK_DEALERS, MOCK_REPORT } from "@/lib/mocks";
+import { discoverMoreDealers, getSpec } from "@/lib/api";
+import type { Benchmark } from "@/lib/types";
 import { useCallCenter } from "@/lib/useCallCenter";
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
@@ -31,10 +34,40 @@ export default function CallCenterPage() {
     setRoleplay,
     finishRoleplaySession,
     seedMockCompleted,
+    addDealers,
     stateFor,
     historyFor,
     resolveCallNumber,
   } = useCallCenter(specId);
+
+  const [benchmark, setBenchmark] = useState<Benchmark | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    getSpec(specId)
+      .then((s) => !cancelled && setBenchmark(s.benchmark_json ?? null))
+      .catch(() => !cancelled && setBenchmark(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [specId]);
+
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverNote, setDiscoverNote] = useState<string | null>(null);
+  async function searchMoreDealers() {
+    setDiscovering(true);
+    setDiscoverNote(null);
+    try {
+      const { added } = await discoverMoreDealers(specId);
+      addDealers(added);
+      setDiscoverNote(
+        added.length === 0 ? "No new dealers found." : `Found ${added.length} new dealer${added.length === 1 ? "" : "s"}.`
+      );
+    } catch {
+      setDiscoverNote("Could not search for more dealers.");
+    } finally {
+      setDiscovering(false);
+    }
+  }
 
   // Report citation deep-link: ?call=<call_number>&line=<n>. Mock mode seeds a
   // canned completed call; real mode resolves call_number against every call
@@ -102,8 +135,21 @@ export default function CallCenterPage() {
             The Negotiator calls each dealer for an itemised quote. Watch the
             calls live; quotes land here as they are logged.
           </p>
+          <div className="mt-3">
+            <BenchmarkBadge benchmark={benchmark} />
+          </div>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex flex-col items-end gap-1.5">
+            <Button variant="secondary" onClick={searchMoreDealers} disabled={discovering}>
+              {discovering ? "Searching..." : "Search more dealers"}
+            </Button>
+            {discoverNote && (
+              <p className="text-xs text-text-dim" role="status">
+                {discoverNote}
+              </p>
+            )}
+          </div>
           <Button onClick={callAll} disabled={!dealers || !anyIdle}>
             Call all dealers
           </Button>

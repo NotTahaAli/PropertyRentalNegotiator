@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from . import crud
 from .agent_factory import CALL_OUTCOMES
-from .api import QuoteCreate, _get_or_404, _total_first_year
+from .api import QuoteCreate, _get_or_404, _total_first_year, _total_over_term
 from .bridge import set_call_outcome
 from .vertical import load_vertical
 
@@ -137,9 +137,18 @@ def log_quote(body: QuoteCreate) -> dict[str, Any]:
         binding=body.binding,
     )
     total = _total_first_year(body)
+
+    config = load_vertical()
+    spec_json = spec.get("spec_json") or {}
+    periods = spec_json.get(config.duration_field) if config.duration_field else None
+    growth = getattr(body, config.increment_field, None) if config.increment_field else None
+    total_term = _total_over_term(body, periods, growth)
+
     row = {
         **body.model_dump(),
         "total_first_year": total,
+        "total_term": total_term,
+        "available_from": body.available_from,
         "flagged": verdict["action"] != "clear",
         "flag_reason": "; ".join(verdict["reasons"]) or None,
     }
@@ -147,6 +156,7 @@ def log_quote(body: QuoteCreate) -> dict[str, Any]:
     return {
         "quote_id": quote["id"],
         "total_first_year": total,
+        "total_term": total_term,
         "flagged": quote["flagged"],
         "flag_reason": quote["flag_reason"],
     }
@@ -205,7 +215,7 @@ def get_leverage(body: LeverageRequest) -> dict[str, Any]:
     # than dropped, so the agent can judge reliability itself.
     competitors = sorted(
         (q for q in quotes if q["dealer_id"] != body.dealer_id),
-        key=lambda q: q["total_first_year"],
+        key=lambda q: (q.get("total_term") or q["total_first_year"]),
     )[:LEVERAGE_COMPETITOR_CAP]
     selected = own + competitors
     return {
@@ -218,6 +228,7 @@ def get_leverage(body: LeverageRequest) -> dict[str, Any]:
                 "commission": q["commission"],
                 "maintenance": q["maintenance"],
                 "total_first_year": q["total_first_year"],
+                "total_term": q.get("total_term"),
                 "is_current_dealer": q["dealer_id"] == body.dealer_id,
                 "flagged": q["flagged"],
             }

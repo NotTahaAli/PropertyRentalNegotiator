@@ -80,6 +80,15 @@ def _money(value: float | None, currency: str) -> str:
     return "unknown" if value is None else f"{currency} {value:,.0f}"
 
 
+def meets_deadline(quote: dict[str, Any], client_deadline: str | None) -> bool:
+    if not client_deadline:
+        return True  # no deadline means no gate
+    available = quote.get("available_from")
+    if not available:
+        return False  # unconfirmed = miss
+    return str(available) <= str(client_deadline)
+
+
 def _report_row(
     dealer: dict[str, Any],
     call: dict[str, Any],
@@ -97,6 +106,9 @@ def _report_row(
         # depending on quote id, which is None for a never-quoted dealer.
         "row_id": f'{dealer["id"]}:{property_ref or ""}',
         "rank": None,  # assigned below
+        "total_term": (quote or {}).get("total_term"),
+        "available_from": (quote or {}).get("available_from"),
+        "meets_deadline": None,  # assigned during ranking
         "quote": quote,
         "round": call.get("round", 1),
         # A quote row on the call is proof of at least a plain "quote", so it
@@ -119,6 +131,10 @@ def build_report(spec_id: str) -> dict[str, Any]:
     currency = config.currency
     dealers = crud.list_dealers(spec_id=spec_id)
     calls = sorted(crud.list_calls(spec_id=spec_id), key=_call_sort_key)
+    spec = crud.get_spec(spec_id)
+    spec_json = (spec or {}).get("spec_json") or {}
+    client_deadline = spec_json.get(config.deadline_field) if config.deadline_field else None
+    n_years = spec_json.get(config.duration_field) if config.duration_field else None
 
     # Backend-assigned, stable 1-based citation numbers. Until now the only
     # call numbering was the frontend's MOCK_DEALERS index, which had no real
@@ -150,12 +166,22 @@ def build_report(spec_id: str) -> dict[str, Any]:
         for call, quote in latest_by_prop.values():
             rows.append(_report_row(dealer, call, quote, call_number))
 
+    def _sort_key(r):
+        q = r["quote"]
+        term = q.get("total_term") or q["total_first_year"]
+        return (
+            bool(q.get("flagged")),
+            not meets_deadline(q, client_deadline),
+            term,
+            q["total_first_year"],
+        )
     ranked = sorted(
         (r for r in rows if r["quote"]),
-        key=lambda r: (bool(r["quote"].get("flagged")), r["quote"]["total_first_year"]),
+        key=_sort_key,
     )
     for rank, row in enumerate(ranked, start=1):
         row["rank"] = rank
+        row["meets_deadline"] = meets_deadline(row["quote"], client_deadline)
 
     # Ranked rows first (in rank order), then the unranked (declined/no quote).
     rows.sort(key=lambda r: (r["rank"] is None, r["rank"] or 0, r["dealer_name"]))
@@ -166,7 +192,7 @@ def build_report(spec_id: str) -> dict[str, Any]:
         "rows": rows,
         "recommended_dealer_id": recommended["dealer_id"] if recommended else None,
         "recommended_row_id": recommended["row_id"] if recommended else None,
-        "recommendation_text": _recommendation_text(ranked, currency),
+        "recommendation_text": _recommendation_text(ranked, currency, client_deadline, n_years),
     }
 
 
@@ -175,7 +201,7 @@ def _dealer_label(row: dict[str, Any]) -> str:
     return f'{row["dealer_name"]} (shop {ref})' if ref else row["dealer_name"]
 
 
-def _recommendation_text(ranked: list[dict[str, Any]], currency: str) -> str:
+def _recommendation_text(ranked: list[dict[str, Any]], currency: str, client_deadline: str | None, n_years: float | None) -> str:
     if not ranked:
         return (
             "No dealer produced a quote, so there is nothing to rank yet. "
@@ -185,9 +211,22 @@ def _recommendation_text(ranked: list[dict[str, Any]], currency: str) -> str:
     top = ranked[0]
     quote = top["quote"]
     citation = f"[call {top['call_number']}, line {top['citation_line']}]"
+    term_total_val = quote.get('total_term') or quote['total_first_year']
+    n_str = f"{n_years:g}" if n_years is not None else "1"
+    
     parts = [
         f"{_dealer_label(top)} offers the best verified deal at "
-        f"{_money(quote['total_first_year'], currency)} for the first year {citation}.",
+        f"{_money(term_total_val, currency)} over the full {n_str}-year term "
+        f"(first year {_money(quote['total_first_year'], currency)}) {citation}."
+    ]
+
+    if client_deadline:
+        if meets_deadline(quote, client_deadline):
+            parts.append(f"They confirmed delivery by your target date of {client_deadline}.")
+        else:
+            parts.append(f"They did NOT confirm delivery by your target date of {client_deadline} — verify before committing.")
+
+    parts.append(
         f"That is {_money(quote.get('monthly_rent'), currency)} per month"
         + (
             f", {quote['advance_months']:g} months advance"
@@ -199,12 +238,13 @@ def _recommendation_text(ranked: list[dict[str, Any]], currency: str) -> str:
             if quote.get("commission")
             else ", no commission"
         )
-        + ".",
-    ]
+        + "."
+    )
 
     runner_up = next((r for r in ranked[1:] if not r["quote"].get("flagged")), None)
     if runner_up:
-        saving = runner_up["quote"]["total_first_year"] - quote["total_first_year"]
+        runner_term = runner_up["quote"].get("total_term") or runner_up["quote"]["total_first_year"]
+        saving = runner_term - term_total_val
         parts.append(
             f"It comes in {_money(saving, currency)} under the next clean offer from "
             f"{_dealer_label(runner_up)}."
@@ -214,16 +254,18 @@ def _recommendation_text(ranked: list[dict[str, Any]], currency: str) -> str:
         r
         for r in ranked[1:]
         if r["quote"].get("flagged")
-        and r["quote"]["total_first_year"] < quote["total_first_year"]
+        and (r["quote"].get("total_term") or r["quote"]["total_first_year"]) < term_total_val
     ]
     for row in cheaper_flagged:
         reason = row["quote"].get("flag_reason") or "failed a red-flag check"
+        row_term = row["quote"].get("total_term") or row["quote"]["total_first_year"]
         parts.append(
             f"{_dealer_label(row)}'s headline number is lower at "
-            f"{_money(row['quote']['total_first_year'], currency)}, but it is flagged — {reason} — "
+            f"{_money(row_term, currency)}, but it is flagged — {reason} — "
             f"so it is ranked below the clean offers rather than recommended "
             f"[call {row['call_number']}, line {row['citation_line']}]."
         )
+
 
     if not quote.get("binding"):
         parts.append(

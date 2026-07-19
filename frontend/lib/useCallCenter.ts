@@ -500,6 +500,16 @@ export function useCallCenter(specId: string) {
     [calls, clearTimers, patch]
   );
 
+  // "Search more dealers" — appends newly discovered dealers, skipping any id
+  // already in the list (double-click safety; the backend also dedupes by name).
+  const addDealers = useCallback((found: Dealer[]) => {
+    setDealers((prev) => {
+      const existing = new Set((prev ?? []).map((d) => d.id));
+      const fresh = found.filter((d) => !existing.has(d.id));
+      return [...(prev ?? []), ...fresh];
+    });
+  }, []);
+
   const setPersona = useCallback(
     async (dealerId: string, persona: Persona) => {
       const updated = await updateDealer(dealerId, { persona });
@@ -553,6 +563,7 @@ export function useCallCenter(specId: string) {
     setRoleplay,
     finishRoleplaySession,
     seedMockCompleted,
+    addDealers,
     stateFor: (dealerId: string): DealerCallState => calls[dealerId] ?? IDLE,
     historyFor: (dealerId: string): CallRow[] => history[dealerId] ?? [],
     resolveCallNumber,

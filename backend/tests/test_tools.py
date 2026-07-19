@@ -249,6 +249,7 @@ def test_log_quote_clean(monkeypatch):
     assert response.json() == {
         "quote_id": "q1",
         "total_first_year": 2960000,
+        "total_term": 2960000.0,
         "flagged": False,
         "flag_reason": None,
     }
@@ -421,6 +422,7 @@ def test_get_leverage_sorted_top5_competitors_with_names(monkeypatch):
         "commission",
         "maintenance",
         "total_first_year",
+        "total_term",
         "is_current_dealer",
         "flagged",
     }
