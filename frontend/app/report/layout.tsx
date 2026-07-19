@@ -14,7 +14,6 @@ export default function ReportLayout({ children }: { children: React.ReactNode }
       <AppNav
         className="print:hidden"
         crumbs={[
-          { label: "Dashboard", href: "/dashboard" },
           { label: specLabel, href: `/calls/${spec_id}` },
           { label: "Report" },
         ]}

@@ -15,7 +15,7 @@ export default function CallsLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-bg text-text">
-      <AppNav crumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: specLabel }]} />
+      <AppNav crumbs={[{ label: specLabel }]} />
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-8 sm:px-10 lg:py-12">
         <Protected>{children}</Protected>
       </main>
