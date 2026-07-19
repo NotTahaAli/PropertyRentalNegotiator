@@ -4,7 +4,7 @@ import Button from "@/components/ui/Button";
 import StateBadge from "./StateBadge";
 import { PERSONA_HINTS } from "@/lib/mocks";
 import { PERSONAS, type Dealer, type Persona } from "@/lib/types";
-import type { DealerCallState } from "@/lib/useCallCenter";
+import { MAX_ROUNDS, type DealerCallState } from "@/lib/useCallCenter";
 
 interface DealerCardProps {
   dealer: Dealer;
@@ -32,6 +32,8 @@ export default function DealerCard({
   // "human" has no ElevenLabs agent — bridge calls need a persona assigned first.
   // Roleplay doesn't need one: a human is on the line either way.
   const noBridgeAgent = !roleplay && dealer.persona === "human";
+  // 2 rounds max (round 1 + leverage round 2) — no round 3.
+  const roundsExhausted = state === "done" && (callState.round ?? 1) >= MAX_ROUNDS;
 
   return (
     <div
@@ -105,39 +107,47 @@ export default function DealerCard({
       )}
 
       <div className="mt-3 flex items-center justify-between gap-3">
-        <Button
-          variant={state === "done" ? "secondary" : "primary"}
-          className="px-4 py-1.5 text-xs"
-          disabled={busy || noBridgeAgent}
-          title={noBridgeAgent ? "Assign a persona to bridge-call, or answer as dealer" : undefined}
-          onClick={(e) => {
-            e.stopPropagation();
-            onCall();
-          }}
-        >
-          {state === "failed"
-            ? "Retry call"
-            : state === "done"
-              ? `Round ${(callState.round ?? 1) + 1}${roleplay ? " roleplay" : ""} call`
-              : roleplay
-                ? "Start roleplay call"
-                : "Call"}
-        </Button>
+        {roundsExhausted ? (
+          <p className="font-mono text-[11px] uppercase tracking-wide text-text-dim">
+            Negotiation complete — {MAX_ROUNDS} rounds done
+          </p>
+        ) : (
+          <>
+            <Button
+              variant={state === "done" ? "secondary" : "primary"}
+              className="px-4 py-1.5 text-xs"
+              disabled={busy || noBridgeAgent}
+              title={noBridgeAgent ? "Assign a persona to bridge-call, or answer as dealer" : undefined}
+              onClick={(e) => {
+                e.stopPropagation();
+                onCall();
+              }}
+            >
+              {state === "failed"
+                ? "Retry call"
+                : state === "done"
+                  ? `Round ${(callState.round ?? 1) + 1}${roleplay ? " roleplay" : ""} call`
+                  : roleplay
+                    ? "Start roleplay call"
+                    : "Call"}
+            </Button>
 
-        {/* role-play mode toggle — primary demo path, not a fallback */}
-        <label
-          className="flex cursor-pointer items-center gap-2 text-xs text-text-secondary"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <input
-            type="checkbox"
-            checked={roleplay}
-            disabled={busy}
-            onChange={(e) => onRoleplayChange(e.target.checked)}
-            className="accent-[#CFA44E]"
-          />
-          Answer as dealer
-        </label>
+            {/* role-play mode toggle — primary demo path, not a fallback */}
+            <label
+              className="flex cursor-pointer items-center gap-2 text-xs text-text-secondary"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={roleplay}
+                disabled={busy}
+                onChange={(e) => onRoleplayChange(e.target.checked)}
+                className="accent-[#CFA44E]"
+              />
+              Answer as dealer
+            </label>
+          </>
+        )}
       </div>
     </div>
   );

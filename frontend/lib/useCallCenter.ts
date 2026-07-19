@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCall, getRecordingUrl, listDealers, listQuotes, startCall, updateDealer } from "./api";
-import { MOCK_OUTCOMES, MOCK_QUOTES, MOCK_TRANSCRIPTS, mockRecordingUrl } from "./mocks";
+import {
+  MOCK_OUTCOMES,
+  MOCK_QUOTES,
+  MOCK_QUOTES_ROUND2,
+  MOCK_TRANSCRIPTS,
+  MOCK_TRANSCRIPTS_ROUND2,
+  mockRecordingUrl,
+} from "./mocks";
 import type { CallOutcome, Dealer, Persona, Quote, TranscriptLine, UiCallState } from "./types";
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
@@ -10,6 +17,9 @@ const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 const POLL_MS = 2000;
 const MOCK_CALLING_MS = 2000;
 const MOCK_LINE_MS = 600;
+
+// 2 rounds per master plan: round 1 (initial quote), round 2 (leverage). No round 3.
+export const MAX_ROUNDS = 2;
 
 export interface DealerCallState {
   state: UiCallState;
@@ -70,11 +80,14 @@ export function useCallCenter(specId: string) {
   }, []);
 
   const runMockCall = useCallback(
-    (dealer: Dealer) => {
-      patch(dealer.id, { state: "calling", transcript: [], error: undefined });
+    (dealer: Dealer, round: number) => {
+      patch(dealer.id, { state: "calling", round, transcript: [], error: undefined });
       const goLive = setTimeout(() => {
         patch(dealer.id, { state: "live", startedAt: Date.now() });
-        const lines = MOCK_TRANSCRIPTS[dealer.persona];
+        const lines =
+          round >= 2
+            ? (MOCK_TRANSCRIPTS_ROUND2[dealer.persona] ?? MOCK_TRANSCRIPTS[dealer.persona])
+            : MOCK_TRANSCRIPTS[dealer.persona];
         let i = 0;
         const reveal = setInterval(() => {
           if (i < lines.length) {
@@ -86,10 +99,14 @@ export function useCallCenter(specId: string) {
           } else {
             clearInterval(reveal);
             const outcome = MOCK_OUTCOMES[dealer.persona];
+            const quote =
+              round >= 2
+                ? (MOCK_QUOTES_ROUND2[dealer.persona] ?? MOCK_QUOTES[dealer.persona] ?? null)
+                : (MOCK_QUOTES[dealer.persona] ?? null);
             patch(dealer.id, {
               state: "done",
               outcome,
-              quote: MOCK_QUOTES[dealer.persona] ?? null,
+              quote,
               recordingUrl: mockRecordingUrl(),
             });
           }
@@ -209,13 +226,16 @@ export function useCallCenter(specId: string) {
     (dealerId: string) => {
       const dealer = dealers?.find((d) => d.id === dealerId);
       if (!dealer) return;
-      const current = calls[dealerId]?.state ?? "idle";
+      const prev = calls[dealerId];
+      const current = prev?.state ?? "idle";
       if (current === "calling" || current === "live") return;
+      if (current === "done" && (prev?.round ?? 1) >= MAX_ROUNDS) return; // capped, no round 3
       clearTimers(dealerId);
       setSelected(dealerId);
-      if (USE_MOCKS) runMockCall(dealer);
-      else if (roleplay[dealerId]) void startRoleplay(dealer, nextRound(dealerId));
-      else void runRealCall(dealer, nextRound(dealerId));
+      const round = nextRound(dealerId);
+      if (USE_MOCKS) runMockCall(dealer, round);
+      else if (roleplay[dealerId]) void startRoleplay(dealer, round);
+      else void runRealCall(dealer, round);
     },
     [dealers, calls, clearTimers, runMockCall, runRealCall, startRoleplay, roleplay, nextRound]
   );
@@ -234,7 +254,7 @@ export function useCallCenter(specId: string) {
     dealers?.forEach((d) => {
       const s = calls[d.id]?.state ?? "idle";
       if (s !== "idle" && s !== "failed") return;
-      if (USE_MOCKS) runMockCall(d);
+      if (USE_MOCKS) runMockCall(d, nextRound(d.id));
       // roleplay needs a human on the line for each call — bulk-start skips those,
       // they're started individually from the DealerCard button instead.
       else if (!roleplay[d.id]) void runRealCall(d, nextRound(d.id));

@@ -144,6 +144,36 @@ export const MOCK_TRANSCRIPTS: Record<Dealer["persona"], TranscriptLine[]> = {
   ],
 };
 
+// Round 2 = leverage round (get_leverage cites round-1's real logged bids).
+// Lowballer had the lowest total_first_year (998,500) of any real quote, so
+// that's what Firm-but-Fair gets confronted with — master plan §414's
+// headline demo moment: price moves because of leverage, not a script.
+export const MOCK_TRANSCRIPTS_ROUND2: Partial<Record<Dealer["persona"], TranscriptLine[]>> = {
+  stonewaller: [
+    t(1, "negotiator", "Following up again about the Gulberg shop — has anything changed on your side?"),
+    t(2, "dealer", "That one, still with the other party, I told you."),
+    t(3, "negotiator", "Understood. I'll take this as a final decline then."),
+    t(4, "dealer", "Yes, decline. Khuda hafiz."),
+  ],
+  lowballer: [
+    t(1, "negotiator", "Following up — I have another offer close to yours already. Any room to move further?"),
+    t(2, "dealer", "Ji, this price is already the best in the market, nothing more to reduce."),
+    t(3, "negotiator", "Understood, I'll log the same terms as final."),
+  ],
+  upseller: [
+    t(1, "negotiator", "Following up with a documented lower offer from another dealer — any room to match it?"),
+    t(2, "dealer", "I already gave my best for a three-year commitment, ten percent final. Can't go below that."),
+    t(3, "negotiator", "Understood, logging the same quote as final."),
+  ],
+  firm: [
+    t(1, "negotiator", "I have a documented offer at 65,000 monthly, all-in, for a comparable shop — can you match it?"),
+    t(2, "dealer", "That's below what I quoted, but for a genuine competing offer I can adjust. I'll bring the rent down and waive the commission entirely."),
+    t(3, "negotiator", "So the commission is waived — what's the revised monthly rent?"),
+    t(4, "dealer", "I can do 100,000, no commission, everything else stays as agreed."),
+    t(5, "negotiator", "Noted — 100,000 rent, 2 months advance, commission waived, 5,000 maintenance, 5 percent increment. Logging the updated quote."),
+  ],
+};
+
 export const MOCK_OUTCOMES: Record<Dealer["persona"], CallOutcome> = {
   stonewaller: "declined",
   lowballer: "quote",
@@ -171,6 +201,18 @@ export const MOCK_QUOTES: Partial<Record<Dealer["persona"], Quote>> = {
     monthly_rent: 110000, advance_months: 2, commission: 55000, maintenance: 5000,
     annual_increment_pct: 5, total_first_year: 1655000, binding: true,
     notes: "Written draft agreement offered; half commission waived for 3-year lease.",
+  },
+};
+
+// Round 2 quotes — only where the number actually changes (Firm-but-Fair,
+// the leverage concession). Lowballer/Upseller hold their round-1 quote
+// (nothing left to concede), so they aren't overridden here.
+export const MOCK_QUOTES_ROUND2: Partial<Record<Dealer["persona"], Quote>> = {
+  firm: {
+    id: "quote_firm_r2", call_id: "call_firm_r2", dealer_id: "dealer_firm",
+    monthly_rent: 100000, advance_months: 2, commission: 0, maintenance: 5000,
+    annual_increment_pct: 5, total_first_year: 1460000, binding: true,
+    notes: "Round 2: matched a documented 65,000 competing offer — rent trimmed 110k→100k, commission fully waived.",
   },
 };
 
