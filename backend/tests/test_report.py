@@ -312,3 +312,28 @@ def test_report_endpoint_returns_report_for_owner(monkeypatch):
     assert body["spec_id"] == SPEC_ID
     assert body["recommended_dealer_id"] == "d1"
     assert body["rows"][0]["rank"] == 1
+
+
+def test_stale_callback_outcome_is_corrected_by_the_quote_row(monkeypatch):
+    """Rows written before outcome derivation trusted the quotes table can say
+    "callback" while carrying a real quote. The report shows what actually
+    happened rather than repeating the stale verdict."""
+    dealers = [_dealer("d1", "Firm", "firm")]
+    calls = [_call("c1", "d1", 1, "2026-01-01T10:00:00Z", outcome="callback")]
+    _wire(monkeypatch, dealers, calls, {"c1": [_quote("c1", "d1", 1_460_000)]})
+
+    row = report.build_report(SPEC_ID)["rows"][0]
+
+    assert row["outcome"] == "quote"
+    assert row["rank"] == 1
+
+
+def test_declined_outcome_survives_when_there_is_no_quote(monkeypatch):
+    dealers = [_dealer("d1", "Stonewall", "stonewaller")]
+    calls = [_call("c1", "d1", 1, "2026-01-01T10:00:00Z", outcome="declined")]
+    _wire(monkeypatch, dealers, calls, {})
+
+    row = report.build_report(SPEC_ID)["rows"][0]
+
+    assert row["outcome"] == "declined"
+    assert row["rank"] is None

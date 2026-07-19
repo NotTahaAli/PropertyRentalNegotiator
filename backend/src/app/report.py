@@ -109,7 +109,10 @@ def build_report(spec_id: str) -> dict[str, Any]:
                 "rank": None,  # assigned below
                 "quote": quote,
                 "round": call.get("round", 1),
-                "outcome": call.get("outcome") or ("quote" if quote else "failed"),
+                # A quote row on the call is proof of a quote, so it outranks a
+                # stored outcome. Keeps the report right even for rows written
+                # before outcome derivation started trusting the quotes table.
+                "outcome": "quote" if quote else (call.get("outcome") or "failed"),
                 "call_number": call_number[call["id"]],
                 "citation_line": _citation_line(call.get("transcript_json"), quote),
                 "recording_url": _signed_recording(call),

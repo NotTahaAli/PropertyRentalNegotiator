@@ -18,7 +18,7 @@ The repo is greenfield: `backend/` is a uv-managed Python package (`src/app/`) �
 
 ## Status — work breakdown (K1–K13)
 
-**All 13 components are code-complete. 222 backend tests; 218 pass.** The 4
+**All 13 components are code-complete. 232 backend tests; 228 pass.** The 4
 failures are all `POST /webhooks/post-call` and all the same
 `ImportError: socksio` from the ElevenLabs SDK's httpx client behind a SOCKS
 proxy — an environment artifact, not a product defect. What remains is **live
@@ -91,6 +91,13 @@ quotes  (id, call_id, dealer_id, monthly_rent, advance_months, commission, maint
 ### The honesty guardrail (core product thesis — never weaken it)
 
 The Negotiator has no free-text knowledge of other bids. Its **only** source of leverage is `get_leverage`, which returns real quotes logged in Supabase. No bids logged → tool returns nothing → agent negotiates on fees/terms instead. Fabricating a competing bid must remain architecturally impossible, not merely prompted against. Do not add competing-bid info to prompts or contexts by any other path.
+
+The same principle governs **call outcomes**: `derive_outcome` trusts the
+`quotes` table (`bridge.has_logged_quote`) and only falls back to scanning
+transcript prose when no quote was logged. Text scanning alone reported real
+itemised quotes as "callback — no numbers committed", because a real haggle
+arrives piecemeal and no single dealer line contains a whole number. Read the
+data the agent wrote; don't re-derive it from what the agent said.
 
 The same rule binds the **report generator**: `report._recommendation_text` is a template over `quotes` rows, so every figure it prints came from a logged quote and every claim carries a `[call N, line M]` citation into a stored transcript. Do not replace it with an LLM summarisation pass — that would reintroduce exactly the fabrication risk the architecture spends its complexity to eliminate.
 

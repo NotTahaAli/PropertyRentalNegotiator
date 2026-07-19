@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from . import crud, live, storage
 from .auth import _decode, get_current_user_id
 from .benchmark import discover_dealers, fetch_benchmark
-from .bridge import derive_outcome, request_stop, run_bridge
+from .bridge import derive_outcome, has_logged_quote, request_stop, run_bridge
 from .seed import seed_dealers
 from .vertical import load_vertical
 
@@ -328,7 +328,9 @@ def end_call(id: str, user_id: str = Depends(get_current_user_id)) -> dict[str, 
             {
                 "status": "completed",
                 "ended_at": datetime.now(timezone.utc).isoformat(),
-                "outcome": derive_outcome(call.get("transcript_json") or []),
+                "outcome": derive_outcome(
+                    call.get("transcript_json") or [], has_quote=has_logged_quote(id)
+                ),
             },
         )
     return {"call_id": id, "stopping": stopping}
@@ -371,7 +373,12 @@ async def post_call_webhook(request: Request) -> dict[str, Any]:
         call_id,
         {
             "transcript_json": transcript,
-            "outcome": derive_outcome(transcript),
+            # Same ground-truth rule as the bridge: a logged quote row beats any
+            # reading of the prose. Matters most here — the roleplay path lands
+            # its transcript through this webhook.
+            "outcome": derive_outcome(
+                transcript, has_quote=has_logged_quote(call_id)
+            ),
             "status": "completed",
         },
     )

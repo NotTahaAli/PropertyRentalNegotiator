@@ -691,3 +691,68 @@ def test_run_bridge_has_no_time_cap_but_silence_watchdog_still_ends_it(monkeypat
     assert call_id == "call-3"
     assert fields["status"] == "completed"
     assert fields["outcome"] == "callback"
+
+
+# --- derive_outcome: quote rows are ground truth (screenshot bug) ------------
+
+def test_derive_outcome_quote_when_a_quote_row_was_logged():
+    """The exact failure seen in the UI: a real itemised quote reported as a callback.
+
+    A real haggle is piecemeal — the dealer answers "forty", then "two months",
+    then "one month commission", and the negotiator assembles the full quote
+    across turns. No single dealer line contains a complete number token, so the
+    text scan saw nothing and returned "callback" even though `log_quote` had
+    written a row with real figures.
+    """
+    transcript = [
+        {"line": 1, "speaker": "negotiator", "text": "What is the monthly rent?"},
+        {"line": 2, "speaker": "dealer", "text": "Forty."},
+        {"line": 3, "speaker": "negotiator", "text": "And the advance?"},
+        {"line": 4, "speaker": "dealer", "text": "Two months. Commission one month."},
+        {"line": 5, "speaker": "negotiator", "text": "I have the full quote now."},
+    ]
+
+    assert bridge.derive_outcome(transcript) == "callback"  # text scan alone
+    assert bridge.derive_outcome(transcript, has_quote=True) == "quote"
+
+
+def test_derive_outcome_quote_row_beats_a_decline_phrase():
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "That unit is not available, but here are my terms."},
+    ]
+
+    assert bridge.derive_outcome(transcript, has_quote=True) == "quote"
+
+
+def test_derive_outcome_without_quote_row_still_falls_back_to_text():
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "Rent is 95000 per month."},
+    ]
+
+    assert bridge.derive_outcome(transcript, has_quote=False) == "quote"
+
+
+def test_derive_outcome_decline_wins_over_an_incidental_number():
+    """A dealer who declines this unit and mentions a number for another one has
+    still declined this one. Only a real logged quote overrides that."""
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "This shop is already rented. Another is 90000."},
+    ]
+
+    assert bridge.derive_outcome(transcript) == "declined"
+
+
+def test_derive_outcome_quote_with_k_shorthand():
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "Rent is 40k per month."},
+    ]
+
+    assert bridge.derive_outcome(transcript) == "quote"
+
+
+def test_derive_outcome_k_shorthand_does_not_match_stray_words():
+    transcript = [
+        {"line": 1, "speaker": "dealer", "text": "Ok, I will check and call you back."},
+    ]
+
+    assert bridge.derive_outcome(transcript) == "callback"

@@ -177,7 +177,10 @@ export function useCallCenter(specId: string) {
           patch(dealerId, {
             state: "done",
             transcript: call.transcript_json ?? [],
-            outcome: call.outcome ?? "callback",
+            // A quote we actually fetched outranks the stored outcome. Without
+            // this, a call that produced a real itemised quote could still show
+            // "Dealer asked for a callback — no numbers committed".
+            outcome: quote ? "quote" : call.outcome ?? "callback",
             ...(quote !== undefined ? { quote } : {}),
             recordingUrl,
           });
@@ -244,7 +247,13 @@ export function useCallCenter(specId: string) {
           round: c.round,
           callId: c.id,
           transcript: c.transcript_json ?? [],
-          outcome: c.outcome ?? (c.status === "failed" ? "failed" : "callback"),
+          // same rule as the poll path: a real quote row beats the stored outcome
+          outcome:
+            c.status === "failed"
+              ? "failed"
+              : quote
+                ? "quote"
+                : c.outcome ?? "callback",
           quote,
           recordingUrl,
         });

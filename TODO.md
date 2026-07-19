@@ -71,7 +71,35 @@ an item; delete resolved items instead of checking them off.
   mic conversation through it yet. Needs a human: start interview, answer,
   watch fields fill, confirm, verify auto-hangup. Spends ~2 min of credits.
 
+## Open: partial quotes can understate a bid
+
+- **`get_leverage` and the report can both be misled by a partial quote row.**
+  Since `log_quote` upserts, a row exists the moment the first number lands. Its
+  `total_first_year` is computed from whatever fields have arrived, so a
+  rent-only row is strictly *cheaper* than the same dealer's completed quote
+  (40,000 rent: partial 480,000 vs complete 636,000). `get_leverage` sorts
+  ascending and returns the lowest 3, so a half-finished quote can be served to
+  another dealer as the best competing bid, and can rank #1 in the report.
+  Not a fabrication — the number is real — but it is understated, and the
+  negotiator would be citing it as if it were a full offer. Fix would be to skip
+  quotes missing the fee fields in `get_leverage`/report ranking. Deliberately
+  not done yet: it lands in `tools.py`, which is being actively edited.
+
 ## Resolved
+
+- **Real quotes reported as "no numbers committed"** — `derive_outcome`
+  classified a call by regex-scanning the dealer's transcript lines for a
+  complete number token. A real haggle is piecemeal ("forty" / "two months" /
+  "one month commission"), so no single line matched and calls that produced a
+  full itemised quote came back as `callback`, showing "Dealer asked for a
+  callback — no numbers committed" in the UI. Outcome now reads the **quotes
+  table** as ground truth (`bridge.has_logged_quote`) and only falls back to the
+  text scan when no quote was logged. Applied at all three finalize points: the
+  bridge, the post-call webhook (the roleplay path), and the orphaned-call
+  recovery in `POST /calls/{id}/end`. The report and `useCallCenter` also prefer
+  a real quote row over a stored outcome, so rows written before this fix
+  display correctly too. Fallback scan additionally learned the "40k" shorthand,
+  and decline now beats an incidental number.
 
 - **K10 report generator** — `GET /report/{spec_id}` built
   (`backend/src/app/report.py`, `backend/tests/test_report.py`, 20 tests). The

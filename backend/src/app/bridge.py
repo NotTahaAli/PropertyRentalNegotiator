@@ -43,12 +43,12 @@ _SILENCE_CHUNK_B64 = base64.b64encode(
     b"\x00" * int(SAMPLE_RATE * SAMPLE_WIDTH * SILENCE_CHUNK_SECONDS)
 ).decode()
 
-# ponytail: 4+ digit number (commas stripped) or a singular money scale word
-# = money in PKR. Singular only: "thousands of customers" is not a quote.
-# Webhook/quotes table is the ground truth anyway.
-_QUOTE_NUMBER_RE = re.compile(r"\d{4,}|\b(?:thousand|lakh|lac|crore|million)\b")
+# Fallback only — the quotes table is the ground truth (see derive_outcome).
+# 4+ digit number (commas stripped), the "40k" shorthand, or a singular money
+# scale word = money in PKR. Singular only: "thousands of customers" isn't a quote.
+_QUOTE_NUMBER_RE = re.compile(r"\d{4,}|\b\d+\s*k\b|\b(?:thousand|lakh|lac|crore|million)\b")
 _DECLINE_PHRASES = ("not interested", "no deal", "not available", "already rented")
-_CALLBACK_PHRASES = ("call you back", "call back", "callback")
+# (a callback needs no phrase list — it's what's left when nothing else matches)
 
 
 def stereo_wav(neg: bytes, dealer: bytes) -> bytes:
@@ -211,14 +211,44 @@ async def relay_loop(src_ws, leg: str, sink: CallSink, queue: asyncio.Queue) -> 
             await src_ws.send(json.dumps({"type": "pong", "event_id": event_id}))
 
 
-def derive_outcome(transcript: list[dict]) -> str:
+def has_logged_quote(call_id: str) -> bool:
+    """Did `log_quote` write a real quote row for this call?
+
+    Best-effort by design: every caller is finalizing a call, and a failed read
+    here must degrade to the text fallback rather than lose the call record.
+    """
+    try:
+        return bool(crud.list_quotes(call_id=call_id))
+    except Exception:
+        return False
+
+
+def derive_outcome(transcript: list[dict], has_quote: bool = False) -> str:
+    """Classify how a call ended.
+
+    `has_quote` is the ground truth and always wins: it means `log_quote` wrote a
+    real row with real figures during the call. The text scan below is only a
+    fallback for calls where no quote was logged.
+
+    This ordering matters. The scan looks for a *complete* number token in the
+    dealer's lines, but a real haggle is piecemeal — the dealer answers "forty",
+    then "two months", then "one month commission", and the negotiator assembles
+    the full quote across turns. None of those fragments match, so a call that
+    produced a perfectly good itemised quote was being reported as
+    "Dealer asked for a callback — no numbers committed". Reading the quotes
+    table instead of guessing from prose removes the whole class of failure.
+    """
+    if has_quote:
+        return "quote"
     dealer_lines = [
         e["text"].lower().replace(",", "") for e in transcript if e["speaker"] == "dealer"
     ]
-    if any(_QUOTE_NUMBER_RE.search(line) for line in dealer_lines):
-        return "quote"
+    # Decline is checked first now: a dealer who says "already rented" and then
+    # quotes a number for a *different* unit has still declined this one.
     if any(phrase in line for line in dealer_lines for phrase in _DECLINE_PHRASES):
         return "declined"
+    if any(_QUOTE_NUMBER_RE.search(line) for line in dealer_lines):
+        return "quote"
     return "callback"
 
 
@@ -321,7 +351,11 @@ async def run_bridge(
         if failed:
             status, outcome = "failed", "failed"
         else:
-            status, outcome = "completed", derive_outcome(transcript)
+            # A logged quote row is proof the call produced numbers, whatever
+            # the prose looked like.
+            status, outcome = "completed", derive_outcome(
+                transcript, has_quote=has_logged_quote(call_id)
+            )
         crud.update_call(
             call_id,
             {
