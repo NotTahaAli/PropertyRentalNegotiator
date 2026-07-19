@@ -67,17 +67,25 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
 
     log_quote = _webhook_tool(
         "log_quote",
-        "Writes an itemised quote row mid-call. Call this as soon as the dealer gives real numbers.",
+        "Logs the quote mid-call. Call it the moment the dealer gives the first real number, "
+        "even if the quote is still partial — then call it again as more numbers arrive; "
+        "repeat calls update the same quote and earlier fields are kept.",
         {
             **fee_properties,
             "call_id": {"type": "string", "description": "Current call id."},
             "dealer_id": {"type": "string", "description": "Current dealer id."},
-            "binding": {"type": "boolean", "description": "Whether the dealer can produce a written quote."},
-            "notes": {"type": "string", "description": "Any other relevant detail about the quote."},
+            "binding": {"type": "boolean", "description": "Whether the dealer can produce a written quote. Send true as soon as they confirm it."},
+            "notes": {"type": "string", "description": "Any other relevant detail about the quote or the property."},
         },
-        # binding required: no_written_quote flags non-binding quotes and get_leverage
-        # excludes flagged rows — an omitted binding would silently starve leverage.
-        required=[*config.fee_taxonomy, "call_id", "dealer_id", "binding"],
+        # Partial quotes allowed: only the ids (plus monthly_rent, which QuoteCreate
+        # hard-requires) are schema-required. binding stays optional — while it's
+        # unconfirmed the quote carries the no_written_quote flag and get_leverage
+        # excludes it, so a partial quote can't leak into leverage early.
+        required=[
+            *(["monthly_rent"] if "monthly_rent" in config.fee_taxonomy else []),
+            "call_id",
+            "dealer_id",
+        ],
     )
 
     redflag_fees = [f for f in ("monthly_rent", "advance_months") if f in fee_properties]

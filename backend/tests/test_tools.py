@@ -191,6 +191,7 @@ def test_check_redflag_unknown_spec_404(monkeypatch):
 def _wire_call(monkeypatch, captured):
     monkeypatch.setattr(crud, "get_call", lambda id: {"id": id, "spec_id": "s1"} if id == "c1" else None)
     monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
+    monkeypatch.setattr(crud, "list_quotes", lambda call_id: [])
 
     def fake_create_quote(row):
         captured.update(row)
@@ -240,6 +241,80 @@ def test_log_quote_lowball_unbinding_flagged(monkeypatch):
     assert captured["flagged"] is True
     assert "below" in captured["flag_reason"]
     assert "written" in captured["flag_reason"]
+
+
+def _wire_upserting_call(monkeypatch):
+    """Stateful quote store: second log_quote for the same call updates the row."""
+    store: dict[str, dict] = {}
+    monkeypatch.setattr(crud, "get_call", lambda id: {"id": id, "spec_id": "s1"} if id == "c1" else None)
+    monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
+
+    def fake_create(row):
+        store["q1"] = {"id": "q1", **row}
+        return store["q1"]
+
+    def fake_update(id, fields):
+        store[id] = {**store[id], **fields}
+        return store[id]
+
+    monkeypatch.setattr(crud, "create_quote", fake_create)
+    monkeypatch.setattr(crud, "update_quote", fake_update)
+    monkeypatch.setattr(crud, "list_quotes", lambda call_id: list(store.values()) if call_id == "c1" else [])
+    return store
+
+
+def test_log_quote_partial_then_update_merges_same_row(monkeypatch):
+    store = _wire_upserting_call(monkeypatch)
+
+    first = client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 200000},
+        headers=_headers(),
+    )
+    assert first.status_code == 200
+    assert first.json()["quote_id"] == "q1"
+    assert store["q1"]["flagged"] is True  # binding unconfirmed → no_written_quote
+
+    second = client.post(
+        "/tools/log_quote",
+        json={
+            "call_id": "c1",
+            "dealer_id": "d1",
+            "monthly_rent": 200000,
+            "advance_months": 2,
+            "commission": 100000,
+            "maintenance": 5000,
+            "annual_increment_pct": 10,
+            "binding": True,
+        },
+        headers=_headers(),
+    )
+    assert second.status_code == 200
+    assert second.json()["quote_id"] == "q1"  # same row, not a second insert
+    assert len(store) == 1
+    assert store["q1"]["total_first_year"] == 2960000
+    assert store["q1"]["flagged"] is False  # fresh verdict unflags
+
+
+def test_log_quote_update_keeps_earlier_fields_and_binding(monkeypatch):
+    store = _wire_upserting_call(monkeypatch)
+
+    client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 200000, "advance_months": 3, "binding": True},
+        headers=_headers(),
+    )
+    # later call omits advance_months and binding — earlier values must survive
+    client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 190000, "commission": 50000},
+        headers=_headers(),
+    )
+    q = store["q1"]
+    assert q["monthly_rent"] == 190000
+    assert q["advance_months"] == 3
+    assert q["commission"] == 50000
+    assert q["binding"] is True
 
 
 # --- POST /tools/get_leverage --------------------------------------------
