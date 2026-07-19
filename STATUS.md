@@ -1,12 +1,46 @@
 # STATUS
 
-## Branch state (Owner A)
+## Branch state (Owner A) — merged to main
 
-`k9-roleplay` pushed to origin (round-2 leverage mock + roleplay panel).
-Mock-verified; real mode blocked on CORS/C. `k10-report` branched off
-`k9-roleplay`, in progress (see below) — not yet merged anywhere.
+`k9-roleplay` + `k10-report` both merged into `main` (fast-forward, no
+conflicts, `main` was untouched since `k9-roleplay` branched — nothing
+new landed from B/C to reconcile). Pushed.
 
-## K10 Report UI (Owner A) — done on `k10-report` branch
+Full mock demo path verified end-to-end **in browser, by the user** (not
+just code-traced): `/intake` (voice/skip → docs optional → confirm) →
+`/calls/[spec_id]` → call all 4 dealers round 1 (3 done+quote, Stonewaller
+declined) → round 2 on all (Firm-but-Fair's leverage concession renders:
+100,000 rent, commission waived, cites the 65,000 competing offer) →
+"View report" enables only once every dealer is terminal → `/report/
+[spec_id]` (Firm #1, Lowballer rank 3 + flagged not omitted, Stonewaller
+shown declined separately, recommendation cites the right line) →
+citation click lands on `/calls/[spec_id]?call=4&line=4`, correct line
+highlighted → 375px (all three pages, no horizontal scroll, RankedTable's
+stacked-card layout holds) → print preview on `/report` (buttons hidden,
+readable on white). All eight steps passed.
+
+**Done vs mock-verified-only** — be precise about this distinction:
+- **Done** (works regardless of backend state): all frontend UI/state
+  logic above — round tracking, round cap, mock content, citation
+  linking/highlighting, report ranking/flagging logic, responsive/print
+  CSS. This is real, tested code, not a demo trick.
+- **Mock-verified-only** (untested against real backend, will need a
+  real pass before the actual demo): everything above only ran with
+  `NEXT_PUBLIC_USE_MOCKS=true`. Real-mode has never been clicked through
+  — blocked on the open items below.
+
+**Still open (not this session's to fix):**
+- **C:** CORS blocking real-mode verification (roleplay call start and
+  general API calls from the deployed frontend origin) — nothing in
+  real mode can be smoke-tested until this is resolved.
+- **B:** bridge-mode audio overlap (two legs' audio talking over each
+  other) — bridge mode remains the demo fallback path, roleplay is
+  primary, but bridge should still work for the K5 fallback story.
+- **C:** K11 red-flag engine incorrectly flags Upseller (should only be
+  Lowballer per the 30%+-under-benchmark rule — Upseller is *above*
+  market, flagging it is backwards).
+
+## K10 Report UI (Owner A) — done on `k10-report` branch (merged to main)
 
 `GET /report/{spec_id}` doesn't exist on the backend yet (K10 gen is C's
 half, still "Not started" per the plan doc) — built the mock to master
@@ -52,8 +86,8 @@ test before merge. Assumption flagged: the `call` number → dealer mapping
 is mock-only (`MOCK_DEALERS` index); real mode has no backend-assigned
 call numbering yet, that's C's K10-gen territory whenever it ships.
 
-## K9 roleplay panel (Owner A) — done on `k9-roleplay` branch (new branch;
-`call-center-ui` was already merged to main for K9 v1)
+## K9 roleplay panel (Owner A) — done on `k9-roleplay` branch (merged to
+main; `call-center-ui` was already merged to main for K9 v1)
 
 Roleplay promoted from fallback placeholder to primary demo call path (bridge
 is broken; roleplay is what judges see live). `lib/characterCards.ts` (4
