@@ -39,18 +39,20 @@ def test_log_quote_tool_body_covers_every_fee_taxonomy_item():
     assert set(config.fee_taxonomy) <= set(props.keys())
     for fee in config.fee_taxonomy:
         assert props[fee]["type"] == "number"
-    required = log_quote["api_schema"]["request_body_schema"]["required"]
-    assert set(config.fee_taxonomy) <= set(required)
 
 
-def test_log_quote_requires_binding():
-    # Leverage excludes flagged quotes and no_written_quote flags anything non-binding;
-    # if the agent can omit binding, every forgotten quote is flagged and the leverage
-    # pool starves. Force the agent to always report it.
+def test_log_quote_allows_partial_quotes():
+    # Partial quotes are logged the moment the first real number lands and
+    # updated by calling log_quote again — so only the ids (plus monthly_rent,
+    # which QuoteCreate hard-requires) may be schema-required. An unconfirmed
+    # binding stays False → no_written_quote flag → excluded from leverage, so
+    # partial quotes can't leak into leverage before they're confirmed.
     config = load_vertical()
     tools = build_tool_schemas(config)
     log_quote = next(t for t in tools if t["name"] == "log_quote")
-    assert "binding" in log_quote["api_schema"]["request_body_schema"]["required"]
+    required = set(log_quote["api_schema"]["request_body_schema"]["required"])
+    assert required == {"monthly_rent", "call_id", "dealer_id"}
+    assert "update" in log_quote["description"].lower()
 
 
 def test_negotiator_prompt_instructs_asking_for_written_quote():

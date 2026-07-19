@@ -104,6 +104,16 @@ def evaluate_red_flags(
 def log_quote(body: QuoteCreate) -> dict[str, Any]:
     call = _get_or_404(crud.get_call(body.call_id))
     spec = _get_or_404(crud.get_spec(call["spec_id"]))
+    # Upsert per call: partial quotes get logged the moment the first number
+    # lands and later calls merge in the rest (agent tool prompts this flow).
+    existing = next(iter(crud.list_quotes(call_id=body.call_id)), None)
+    if existing is not None:
+        merged = {k: existing.get(k) for k in QuoteCreate.model_fields if k in existing}
+        merged.update({k: v for k, v in body.model_dump().items() if v is not None})
+        # ponytail: binding sticky-true — its schema default False is
+        # indistinguishable from "not stated", so never un-confirm a written quote
+        merged["binding"] = body.binding or bool(existing.get("binding"))
+        body = QuoteCreate(**merged)
     verdict = evaluate_red_flags(
         spec,
         monthly_rent=body.monthly_rent,
@@ -111,14 +121,13 @@ def log_quote(body: QuoteCreate) -> dict[str, Any]:
         binding=body.binding,
     )
     total = _total_first_year(body)
-    quote = crud.create_quote(
-        {
-            **body.model_dump(),
-            "total_first_year": total,
-            "flagged": verdict["action"] != "clear",
-            "flag_reason": "; ".join(verdict["reasons"]) or None,
-        }
-    )
+    row = {
+        **body.model_dump(),
+        "total_first_year": total,
+        "flagged": verdict["action"] != "clear",
+        "flag_reason": "; ".join(verdict["reasons"]) or None,
+    }
+    quote = crud.update_quote(existing["id"], row) if existing else crud.create_quote(row)
     return {
         "quote_id": quote["id"],
         "total_first_year": total,
