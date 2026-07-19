@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import RankedTable from "@/components/report/RankedTable";
 import RecommendationBlock from "@/components/report/RecommendationBlock";
-import { getReport } from "@/lib/api";
+import Button from "@/components/ui/Button";
+import { getReport, reflagSpec } from "@/lib/api";
 import type { Report } from "@/lib/types";
 
 export default function ReportPage() {
@@ -12,21 +13,52 @@ export default function ReportPage() {
   const specId = params.spec_id;
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rechecking, setRechecking] = useState(false);
+  const [recheckNote, setRecheckNote] = useState<string | null>(null);
+
+  const load = useCallback(
+    (isCancelled?: () => boolean) =>
+      getReport(specId)
+        .then((r) => {
+          if (!isCancelled?.()) setReport(r);
+        })
+        .catch(() => {
+          if (!isCancelled?.())
+            setError(
+              "Report not available — this spec has no calls yet, or the backend is unreachable."
+            );
+        }),
+    [specId]
+  );
 
   useEffect(() => {
     let cancelled = false;
-    getReport(specId)
-      .then((r) => !cancelled && setReport(r))
-      .catch(() =>
-        !cancelled &&
-        setError(
-          "Report not available yet — the backend report generator (K10) hasn't shipped, or this spec has no calls yet."
-        )
-      );
+    load(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [specId]);
+  }, [load]);
+
+  // Red-flag verdicts can be stale: a quote logged before the Tavily benchmark
+  // landed was judged against the config fallback. Re-running the rules before
+  // trusting the ranking is cheap, and can unflag as well as flag.
+  async function recheckFlags() {
+    setRechecking(true);
+    setRecheckNote(null);
+    try {
+      const { checked, updated } = await reflagSpec(specId);
+      await load();
+      setRecheckNote(
+        updated === 0
+          ? `Re-checked ${checked} quote${checked === 1 ? "" : "s"} — no changes.`
+          : `Re-checked ${checked} quotes — ${updated} verdict${updated === 1 ? "" : "s"} updated.`
+      );
+    } catch {
+      setRecheckNote("Could not re-check flags.");
+    } finally {
+      setRechecking(false);
+    }
+  }
 
   return (
     <div className="anim-fade-up flex flex-1 flex-col">
@@ -41,6 +73,18 @@ export default function ReportPage() {
             transcript evidence for the recommended deal.
           </p>
         </div>
+        {report && (
+          <div className="flex flex-col items-end gap-1.5">
+            <Button variant="secondary" onClick={recheckFlags} disabled={rechecking}>
+              {rechecking ? "Re-checking..." : "Re-check flags"}
+            </Button>
+            {recheckNote && (
+              <p className="text-xs text-text-dim" role="status">
+                {recheckNote}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (

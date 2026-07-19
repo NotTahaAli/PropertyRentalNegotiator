@@ -107,11 +107,21 @@ def test_below_market_skipped_without_area():
     assert result["action"] == "clear"
 
 
-def test_no_written_quote_fires_on_false_and_absent():
-    for binding in (False, None):
-        result = tools.evaluate_red_flags(_spec(), monthly_rent=200000, binding=binding)
-        assert result["action"] == "flag"
-        assert any("written" in r for r in result["reasons"])
+def test_no_written_quote_fires_only_on_explicit_false():
+    result = tools.evaluate_red_flags(_spec(), monthly_rent=200000, binding=False)
+    assert result["action"] == "flag"
+    assert any("written" in r for r in result["reasons"])
+
+
+def test_unknown_binding_does_not_fire_no_written_quote():
+    """Regression: `not binding` treated None as "dealer refused a written quote".
+
+    An above-market dealer that simply didn't have `binding` recorded came back
+    flagged, which inverts the whole point of the rule. Unknown stays unjudged.
+    """
+    result = tools.evaluate_red_flags(_spec(), monthly_rent=200000, binding=None)
+    assert result["action"] == "clear"
+    assert result["reasons"] == []
 
 
 def test_advance_months_boundary():
@@ -122,7 +132,7 @@ def test_advance_months_boundary():
 
 
 def test_multiple_rules_confirm_then_flag_wins():
-    result = tools.evaluate_red_flags(_spec(), monthly_rent=90000, advance_months=12, binding=None)
+    result = tools.evaluate_red_flags(_spec(), monthly_rent=90000, advance_months=12, binding=False)
     assert result["action"] == "confirm_then_flag"
     assert len(result["reasons"]) == 3
     assert result["confirm_question"]
@@ -171,11 +181,25 @@ def test_check_redflag_lowball(monkeypatch):
     assert body["benchmark"]["monthly_low"] == 162000
 
 
-def test_check_redflag_spec_id_only_fires_no_written_quote(monkeypatch):
+def test_check_redflag_spec_id_only_is_clear(monkeypatch):
+    """Nothing asserted about the quote yet -> nothing to flag. Previously this
+    returned `flag` purely because `binding` was absent from the body."""
     monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
     response = client.post("/tools/check_redflag", json={"spec_id": "s1"}, headers=_headers())
     body = response.json()
     assert response.status_code == 200
+    assert body["action"] == "clear"
+    assert body["reasons"] == []
+
+
+def test_check_redflag_explicit_non_binding_flags(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
+    response = client.post(
+        "/tools/check_redflag",
+        json={"spec_id": "s1", "monthly_rent": 200000, "binding": False},
+        headers=_headers(),
+    )
+    body = response.json()
     assert body["action"] == "flag"
     assert any("written" in r for r in body["reasons"])
 
@@ -233,13 +257,32 @@ def test_log_quote_lowball_unbinding_flagged(monkeypatch):
     _wire_call(monkeypatch, captured)
     response = client.post(
         "/tools/log_quote",
-        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 90000},
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 90000, "binding": False},
         headers=_headers(),
     )
     assert response.status_code == 200
     assert captured["flagged"] is True
     assert "below" in captured["flag_reason"]
     assert "written" in captured["flag_reason"]
+
+
+def test_log_quote_above_market_without_binding_is_not_flagged(monkeypatch):
+    """The Upseller case: quotes *above* benchmark, `binding` never established.
+
+    Used to come back flagged for "no written quote" purely because the field
+    defaulted to False, which put an above-market dealer under the same badge as
+    a suspiciously-cheap one.
+    """
+    captured = {}
+    _wire_call(monkeypatch, captured)
+    response = client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 300000},
+        headers=_headers(),
+    )
+    assert response.status_code == 200
+    assert captured["flagged"] is False
+    assert captured["flag_reason"] is None
 
 
 # --- POST /tools/get_leverage --------------------------------------------

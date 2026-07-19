@@ -77,7 +77,11 @@ class QuoteCreate(BaseModel):
     maintenance: Optional[float] = None
     annual_increment_pct: Optional[float] = None
     other_fees: Optional[dict[str, Any]] = None
-    binding: bool = False
+    # Tri-state on purpose: True = written quote confirmed, False = dealer would
+    # not commit in writing, None = not established. Defaulting to False made
+    # "unknown" indistinguishable from "refused" and tripped the no_written_quote
+    # red flag on every quote that omitted the field.
+    binding: Optional[bool] = None
     notes: Optional[str] = None
     flagged: bool = False
     flag_reason: Optional[str] = None

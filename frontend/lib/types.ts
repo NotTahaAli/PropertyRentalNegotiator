@@ -177,7 +177,9 @@ export interface ReportRow {
   quote: Quote | null;
   round: number;
   outcome: CallOutcome;
-  call_number: number; // stable 1-based citation number — MOCK_DEALERS index+1 in mock mode
+  // Stable 1-based citation number. Real mode: assigned by the backend report
+  // generator from the spec's calls ordered by started_at. Mock: MOCK_DEALERS index+1.
+  call_number: number;
   citation_line: number; // line in that call's transcript this row's claim is backed by
   recording_url?: string | null;
 }
@@ -185,7 +187,8 @@ export interface ReportRow {
 export interface Report {
   spec_id: string;
   rows: ReportRow[];
-  recommended_dealer_id: string;
+  // null when no dealer produced a quote — recommendation_text explains why.
+  recommended_dealer_id: string | null;
   recommendation_text: string;
   // no separate citation field — RecommendationBlock reads call_number/citation_line
   // off the recommended row itself, so the table and the recommendation can't drift apart.

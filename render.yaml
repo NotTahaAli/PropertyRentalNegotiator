@@ -21,3 +21,14 @@ services:
         sync: false
       - key: TOOLS_WEBHOOK_SECRET
         sync: false
+      # Previously absent from this file, so every one of these had to be
+      # remembered by hand in the Render dashboard — which is why OPENAI (K6),
+      # TAVILY (K7) and CORS (real-mode frontend) were all silently unset.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: ELEVENLABS_WEBHOOK_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        value: http://localhost:3000,https://negotiator-frontend-iota.vercel.app
