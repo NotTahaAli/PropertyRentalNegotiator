@@ -21,6 +21,9 @@ export interface DealerCallState {
   quote?: Quote | null;
   recordingUrl?: string | null;
   error?: string;
+  mode?: "bridge" | "roleplay";
+  negotiatorAgentId?: string;
+  dynamicVariables?: Record<string, string | number | boolean>;
 }
 
 const IDLE: DealerCallState = { state: "idle", transcript: [] };
@@ -30,6 +33,7 @@ export function useCallCenter(specId: string) {
   const [dealersError, setDealersError] = useState<string | null>(null);
   const [calls, setCalls] = useState<Record<string, DealerCallState>>({});
   const [selected, setSelected] = useState<string | null>(null);
+  const [roleplay, setRoleplayMap] = useState<Record<string, boolean>>({});
   const timers = useRef<Record<string, ReturnType<typeof setInterval>[]>>({});
 
   useEffect(() => {
@@ -97,26 +101,17 @@ export function useCallCenter(specId: string) {
     [patch, addTimer]
   );
 
-  const runRealCall = useCallback(
-    async (dealer: Dealer, round: number) => {
-      patch(dealer.id, { state: "calling", round, transcript: [], error: undefined });
-      let callId: string;
-      try {
-        const res = await startCall(specId, dealer.id, "bridge", round);
-        callId = res.call_id;
-      } catch {
-        patch(dealer.id, { state: "failed", error: "Could not start call — backend unreachable?" });
-        return;
-      }
-      patch(dealer.id, { state: "live", callId, startedAt: Date.now() });
-
+  // shared by bridge mode (polls right after POST) and roleplay (polls after
+  // the human ends the voice session) — same backend statuses either way.
+  const pollUntilDone = useCallback(
+    (dealerId: string, callId: string) => {
       const poll = setInterval(async () => {
         try {
           const call = await getCall(callId);
           if (call.status === "running") return;
-          clearTimers(dealer.id);
+          clearTimers(dealerId);
           if (call.status === "failed") {
-            patch(dealer.id, {
+            patch(dealerId, {
               state: "failed",
               outcome: "failed",
               transcript: call.transcript_json ?? [],
@@ -134,7 +129,7 @@ export function useCallCenter(specId: string) {
           try {
             recordingUrl = await getRecordingUrl(callId);
           } catch {}
-          patch(dealer.id, {
+          patch(dealerId, {
             state: "done",
             transcript: call.transcript_json ?? [],
             outcome: call.outcome ?? "callback",
@@ -143,13 +138,63 @@ export function useCallCenter(specId: string) {
           });
         } catch {
           // transient poll error — keep polling; surface soft error
-          patch(dealer.id, { error: "Status check failed — retrying..." });
+          patch(dealerId, { error: "Status check failed — retrying..." });
         }
       }, POLL_MS);
-      addTimer(dealer.id, poll);
+      addTimer(dealerId, poll);
     },
-    [specId, patch, addTimer, clearTimers]
+    [patch, addTimer, clearTimers]
   );
+
+  const runRealCall = useCallback(
+    async (dealer: Dealer, round: number) => {
+      patch(dealer.id, { state: "calling", round, mode: "bridge", transcript: [], error: undefined });
+      let callId: string;
+      try {
+        const res = await startCall(specId, dealer.id, "bridge", round);
+        callId = res.call_id;
+      } catch {
+        patch(dealer.id, { state: "failed", error: "Could not start call — backend unreachable?" });
+        return;
+      }
+      patch(dealer.id, { state: "live", callId, startedAt: Date.now() });
+      pollUntilDone(dealer.id, callId);
+    },
+    [specId, patch, pollUntilDone]
+  );
+
+  const startRoleplay = useCallback(
+    async (dealer: Dealer, round: number) => {
+      patch(dealer.id, { state: "calling", round, mode: "roleplay", transcript: [], error: undefined });
+      try {
+        const res = await startCall(specId, dealer.id, "roleplay", round);
+        patch(dealer.id, {
+          state: "live",
+          callId: res.call_id,
+          startedAt: Date.now(),
+          negotiatorAgentId: res.negotiator_agent_id,
+          dynamicVariables: res.dynamic_variables as Record<string, string | number | boolean> | undefined,
+        });
+      } catch {
+        patch(dealer.id, { state: "failed", error: "Could not start roleplay call — backend unreachable?" });
+      }
+    },
+    [specId, patch]
+  );
+
+  // called when the human ends the ElevenLabs voice session (onDisconnect)
+  const finishRoleplaySession = useCallback(
+    (dealerId: string) => {
+      const callId = calls[dealerId]?.callId;
+      if (!callId) return;
+      pollUntilDone(dealerId, callId);
+    },
+    [calls, pollUntilDone]
+  );
+
+  const setRoleplay = useCallback((dealerId: string, on: boolean) => {
+    setRoleplayMap((prev) => ({ ...prev, [dealerId]: on }));
+  }, []);
 
   // a completed call bumps the next one to a leverage round; retries keep their round
   const nextRound = useCallback(
@@ -169,9 +214,10 @@ export function useCallCenter(specId: string) {
       clearTimers(dealerId);
       setSelected(dealerId);
       if (USE_MOCKS) runMockCall(dealer);
+      else if (roleplay[dealerId]) void startRoleplay(dealer, nextRound(dealerId));
       else void runRealCall(dealer, nextRound(dealerId));
     },
-    [dealers, calls, clearTimers, runMockCall, runRealCall, nextRound]
+    [dealers, calls, clearTimers, runMockCall, runRealCall, startRoleplay, roleplay, nextRound]
   );
 
   const setPersona = useCallback(
@@ -187,12 +233,13 @@ export function useCallCenter(specId: string) {
   const callAll = useCallback(() => {
     dealers?.forEach((d) => {
       const s = calls[d.id]?.state ?? "idle";
-      if (s === "idle" || s === "failed") {
-        if (USE_MOCKS) runMockCall(d);
-        else void runRealCall(d, nextRound(d.id));
-      }
+      if (s !== "idle" && s !== "failed") return;
+      if (USE_MOCKS) runMockCall(d);
+      // roleplay needs a human on the line for each call — bulk-start skips those,
+      // they're started individually from the DealerCard button instead.
+      else if (!roleplay[d.id]) void runRealCall(d, nextRound(d.id));
     });
-  }, [dealers, calls, runMockCall, runRealCall, nextRound]);
+  }, [dealers, calls, runMockCall, runRealCall, roleplay, nextRound]);
 
   return {
     dealers,
@@ -203,6 +250,9 @@ export function useCallCenter(specId: string) {
     call,
     callAll,
     setPersona,
+    roleplay,
+    setRoleplay,
+    finishRoleplaySession,
     stateFor: (dealerId: string): DealerCallState => calls[dealerId] ?? IDLE,
   };
 }

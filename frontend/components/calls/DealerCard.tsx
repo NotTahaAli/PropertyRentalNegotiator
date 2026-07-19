@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Button from "@/components/ui/Button";
 import StateBadge from "./StateBadge";
 import { PERSONA_HINTS } from "@/lib/mocks";
@@ -11,24 +10,28 @@ interface DealerCardProps {
   dealer: Dealer;
   callState: DealerCallState;
   selected: boolean;
+  roleplay: boolean;
   onSelect: () => void;
   onCall: () => void;
   onPersonaChange: (persona: Persona) => void;
+  onRoleplayChange: (on: boolean) => void;
 }
 
 export default function DealerCard({
   dealer,
   callState,
   selected,
+  roleplay,
   onSelect,
   onCall,
   onPersonaChange,
+  onRoleplayChange,
 }: DealerCardProps) {
-  const [roleplay, setRoleplay] = useState(false);
   const { state, outcome, quote } = callState;
   const busy = state === "calling" || state === "live";
-  // "human" has no ElevenLabs agent — bridge calls need a persona assigned first
-  const noBridgeAgent = dealer.persona === "human";
+  // "human" has no ElevenLabs agent — bridge calls need a persona assigned first.
+  // Roleplay doesn't need one: a human is on the line either way.
+  const noBridgeAgent = !roleplay && dealer.persona === "human";
 
   return (
     <div
@@ -105,8 +108,8 @@ export default function DealerCard({
         <Button
           variant={state === "done" ? "secondary" : "primary"}
           className="px-4 py-1.5 text-xs"
-          disabled={busy || roleplay || noBridgeAgent}
-          title={noBridgeAgent ? "Assign a persona to bridge-call, or use role-play" : undefined}
+          disabled={busy || noBridgeAgent}
+          title={noBridgeAgent ? "Assign a persona to bridge-call, or answer as dealer" : undefined}
           onClick={(e) => {
             e.stopPropagation();
             onCall();
@@ -115,11 +118,13 @@ export default function DealerCard({
           {state === "failed"
             ? "Retry call"
             : state === "done"
-              ? `Round ${(callState.round ?? 1) + 1} call`
-              : "Call"}
+              ? `Round ${(callState.round ?? 1) + 1}${roleplay ? " roleplay" : ""} call`
+              : roleplay
+                ? "Start roleplay call"
+                : "Call"}
         </Button>
 
-        {/* role-play mode toggle — K5-fallback demo path */}
+        {/* role-play mode toggle — primary demo path, not a fallback */}
         <label
           className="flex cursor-pointer items-center gap-2 text-xs text-text-secondary"
           onClick={(e) => e.stopPropagation()}
@@ -127,22 +132,13 @@ export default function DealerCard({
           <input
             type="checkbox"
             checked={roleplay}
-            onChange={(e) => setRoleplay(e.target.checked)}
+            disabled={busy}
+            onChange={(e) => onRoleplayChange(e.target.checked)}
             className="accent-[#CFA44E]"
           />
           Answer as dealer
         </label>
       </div>
-
-      {roleplay && (
-        <div className="mt-3 rounded-lg border border-dashed border-border-hover bg-elevated p-3">
-          <p className="text-xs text-text-dim">
-            Role-play mode: the ElevenLabs widget embeds here with the negotiator
-            agent — you answer as {dealer.name}. Blocked on B confirming the
-            widget dynamic-variables wiring (see STATUS.md).
-          </p>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,5 +1,45 @@
 # STATUS
 
+## K9 roleplay panel (Owner A) — done on `call-center-ui` branch
+
+Roleplay promoted from fallback placeholder to primary demo call path (bridge
+is broken; roleplay is what judges see live). `lib/characterCards.ts` (4
+scripted persona cards + a `human` fallback card, sourced strictly from
+`vertical.json` persona_prompts — no absolute PKR figures invented, config
+only gives ratios/qualitative rules) + `CharacterCard.tsx` + `RoleplaySession.tsx`
+(real: `ConversationProvider`/`useConversation` from `@elevenlabs/react`,
+mirrors K8 VoiceIntake's inline pattern — no separate SDK primitive existed to
+reuse, flagged and built fresh; mock: static placeholder, no separate
+"simulate" button needed since `useCallCenter`'s existing mock timer path
+already auto-completes on click regardless of the roleplay toggle).
+
+`useCallCenter.ts`: added `roleplay: Record<dealerId,bool>` + `setRoleplay`,
+extracted `pollUntilDone` (shared by bridge's post-POST poll and roleplay's
+post-disconnect poll — same backend statuses either way), added
+`startRoleplay`/`finishRoleplaySession`. `DealerCard`'s "Answer as dealer"
+toggle now drives real state instead of a local dead-end placeholder; bridge
+mode's `noBridgeAgent` (persona `human`) check untouched for bridge, bypassed
+for roleplay since a human is on the line either way. `CallStatusPanel` grows
+a two-column branch (character card + session controls) while
+idle/calling/live and roleplay is on; falls through to the existing
+transcript/quote/audio render, unmodified, once done/failed — bridge mode's
+render path in that file is untouched.
+
+Confirmed: starting a roleplay call on a dealer with an existing completed
+bridge-mode quote creates a new call row at round+1 (same `nextRound()` path
+bridge already uses) — both calls/quotes stay visible independently, nothing
+overwritten.
+
+Also found `@elevenlabs/react` in `package.json`/lockfile but missing from
+`node_modules` (tsc failed on it before any of this work) — ran `npm ci` to
+resync from the lockfile, no version change.
+
+Verified: `tsc --noEmit`, `eslint .`, `next build` all clean (`ƒ
+/calls/[spec_id]` present). Not yet done: browser click-through (real voice
+connect needs real agent IDs + mic; mock click-through untested this pass —
+next session should smoke-test `/calls/spec_mock_001` with roleplay toggled
+on for one dealer before merge).
+
 ## K9 — Call Center UI (Owner A) — IN PROGRESS on `call-center-ui` branch
 
 Build order: ① types+mocks+api ✓ → ② useCallCenter hook ✓ (state machine

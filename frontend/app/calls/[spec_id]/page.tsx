@@ -9,8 +9,19 @@ import { useCallCenter } from "@/lib/useCallCenter";
 export default function CallCenterPage() {
   const params = useParams<{ spec_id: string }>();
   const specId = params.spec_id;
-  const { dealers, dealersError, selected, select, call, callAll, setPersona, stateFor } =
-    useCallCenter(specId);
+  const {
+    dealers,
+    dealersError,
+    selected,
+    select,
+    call,
+    callAll,
+    setPersona,
+    roleplay,
+    setRoleplay,
+    finishRoleplaySession,
+    stateFor,
+  } = useCallCenter(specId);
 
   const anyIdle = dealers?.some((d) => {
     const s = stateFor(d.id).state;
@@ -68,9 +79,11 @@ export default function CallCenterPage() {
                 dealer={d}
                 callState={stateFor(d.id)}
                 selected={selected === d.id}
+                roleplay={!!roleplay[d.id]}
                 onSelect={() => select(d.id)}
                 onCall={() => call(d.id)}
                 onPersonaChange={(p) => void setPersona(d.id, p)}
+                onRoleplayChange={(on) => setRoleplay(d.id, on)}
               />
             ))}
           </div>
@@ -78,6 +91,8 @@ export default function CallCenterPage() {
             <CallStatusPanel
               dealer={selectedDealer}
               callState={selectedDealer ? stateFor(selectedDealer.id) : { state: "idle", transcript: [] }}
+              roleplay={selectedDealer ? !!roleplay[selectedDealer.id] : false}
+              onRoleplaySessionEnded={() => selectedDealer && finishRoleplaySession(selectedDealer.id)}
             />
           </div>
         </div>

@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import AudioPlayer from "./AudioPlayer";
+import CharacterCard from "./CharacterCard";
 import QuoteChip from "./QuoteChip";
+import RoleplaySession from "./RoleplaySession";
 import StateBadge from "./StateBadge";
 import TranscriptStream from "./TranscriptStream";
 import type { Dealer } from "@/lib/types";
@@ -48,9 +50,16 @@ const OUTCOME_LABELS: Record<string, { text: string; className: string }> = {
 interface CallStatusPanelProps {
   dealer: Dealer | null;
   callState: DealerCallState;
+  roleplay: boolean;
+  onRoleplaySessionEnded: () => void;
 }
 
-export default function CallStatusPanel({ dealer, callState }: CallStatusPanelProps) {
+export default function CallStatusPanel({
+  dealer,
+  callState,
+  roleplay,
+  onRoleplaySessionEnded,
+}: CallStatusPanelProps) {
   if (!dealer) {
     return (
       <div className="rounded-xl border border-border bg-surface p-6">
@@ -59,7 +68,45 @@ export default function CallStatusPanel({ dealer, callState }: CallStatusPanelPr
     );
   }
 
-  const { state, transcript, outcome, quote, recordingUrl, error } = callState;
+  const { state, transcript, outcome, quote, recordingUrl, error, negotiatorAgentId, dynamicVariables } =
+    callState;
+
+  // roleplay session in progress: character card + voice controls, side by side.
+  // Once the call reaches done/failed it falls through to the normal render below
+  // (same transcript/quote/audio path bridge mode uses).
+  if (roleplay && (state === "idle" || state === "calling" || state === "live")) {
+    return (
+      <div className="rounded-xl border border-border bg-surface p-5 sm:p-6">
+        <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
+          <p className="truncate font-display text-base font-semibold text-text">{dealer.name}</p>
+          <StateBadge state={state} />
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <CharacterCard dealer={dealer} />
+          <div>
+            {state === "idle" && (
+              <p className="rounded-xl border border-dashed border-border-hover bg-elevated p-5 text-sm text-text-dim">
+                Read the character card, then hit &quot;Start roleplay call&quot;
+                on the dealer&apos;s card to begin.
+              </p>
+            )}
+            {state === "calling" && (
+              <p className="rec-pulse rounded-xl border border-border bg-elevated p-5 text-sm text-text-secondary">
+                Starting roleplay call...
+              </p>
+            )}
+            {state === "live" && (
+              <RoleplaySession
+                agentId={negotiatorAgentId}
+                dynamicVariables={dynamicVariables}
+                onEnded={onRoleplaySessionEnded}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 sm:p-6">
