@@ -18,9 +18,6 @@ const POLL_MS = 2000;
 const MOCK_CALLING_MS = 2000;
 const MOCK_LINE_MS = 600;
 
-// 2 rounds per master plan: round 1 (initial quote), round 2 (leverage). No round 3.
-export const MAX_ROUNDS = 2;
-
 export interface DealerCallState {
   state: UiCallState;
   round?: number; // negotiation round of the last started call (2+ = leverage round)
@@ -81,6 +78,14 @@ export function useCallCenter(specId: string) {
     });
   }, []);
 
+  // local mirror of the backend's auto-block (see finalize_call): a call that
+  // settles "declined" flips the dealer's status without waiting on a refetch.
+  const markDeclined = useCallback((dealerId: string) => {
+    setDealers((prev) =>
+      prev?.map((d) => (d.id === dealerId ? { ...d, status: "declined" } : d)) ?? prev
+    );
+  }, []);
+
   const addTimer = useCallback((dealerId: string, id: ReturnType<typeof setInterval>) => {
     (timers.current[dealerId] ??= []).push(id);
   }, []);
@@ -120,13 +125,14 @@ export function useCallCenter(specId: string) {
               quotes,
               recordingUrl: mockRecordingUrl(),
             });
+            if (outcome === "declined") markDeclined(dealer.id);
           }
         }, MOCK_LINE_MS);
         addTimer(dealer.id, reveal);
       }, MOCK_CALLING_MS);
       addTimer(dealer.id, goLive as unknown as ReturnType<typeof setInterval>);
     },
-    [patch, addTimer]
+    [patch, addTimer, markDeclined]
   );
 
   // shared by bridge mode (polls right after POST) and roleplay (polls after
@@ -185,6 +191,7 @@ export function useCallCenter(specId: string) {
             ...(quotes !== undefined ? { quotes } : {}),
             recordingUrl,
           });
+          if (call.outcome === "declined") markDeclined(dealerId);
         } catch {
           // transient poll error — keep polling; surface soft error
           patch(dealerId, { error: "Status check failed — retrying..." });
@@ -194,7 +201,7 @@ export function useCallCenter(specId: string) {
       }, POLL_MS);
       addTimer(dealerId, poll);
     },
-    [patch, addTimer, clearTimers]
+    [patch, addTimer, clearTimers, markDeclined]
   );
 
   // hydrate dealer states from real call history on load — without this the
@@ -342,8 +349,9 @@ export function useCallCenter(specId: string) {
         quotes,
         recordingUrl: mockRecordingUrl(),
       });
+      if (outcome === "declined") markDeclined(dealerId);
     },
-    [dealers, patch]
+    [dealers, patch, markDeclined]
   );
 
   // a completed call bumps the next one to a leverage round; retries keep their round
@@ -358,11 +366,10 @@ export function useCallCenter(specId: string) {
   const call = useCallback(
     (dealerId: string) => {
       const dealer = dealers?.find((d) => d.id === dealerId);
-      if (!dealer) return;
+      if (!dealer || dealer.status === "declined") return;
       const prev = calls[dealerId];
       const current = prev?.state ?? "idle";
       if (current === "calling" || current === "live") return;
-      if (current === "done" && (prev?.round ?? 1) >= MAX_ROUNDS) return; // capped, no round 3
       clearTimers(dealerId);
       setSelected(dealerId);
       const round = nextRound(dealerId);
@@ -373,17 +380,16 @@ export function useCallCenter(specId: string) {
     [dealers, calls, clearTimers, runMockCall, runRealCall, startRoleplay, roleplay, nextRound]
   );
 
-  // Scoped follow-up: same round-advance rule as call(), but targets one of
-  // the dealer's several properties (focus_property_ref) instead of the
-  // dealer as a whole.
+  // Scoped follow-up: same guard rule as call() (rounds are unlimited, a
+  // declined dealer can't be re-called), but targets one of the dealer's
+  // several properties (focus_property_ref) instead of the dealer as a whole.
   const followUp = useCallback(
     (dealerId: string, propertyRef: string) => {
       const dealer = dealers?.find((d) => d.id === dealerId);
-      if (!dealer) return;
+      if (!dealer || dealer.status === "declined") return;
       const prev = calls[dealerId];
       const current = prev?.state ?? "idle";
       if (current === "calling" || current === "live") return;
-      if (current === "done" && (prev?.round ?? 1) >= MAX_ROUNDS) return; // capped, no round 3
       clearTimers(dealerId);
       setSelected(dealerId);
       const round = nextRound(dealerId);
@@ -422,7 +428,7 @@ export function useCallCenter(specId: string) {
 
   const setPersona = useCallback(
     async (dealerId: string, persona: Persona) => {
-      const updated = await updateDealer(dealerId, persona);
+      const updated = await updateDealer(dealerId, { persona });
       setDealers((prev) =>
         prev?.map((d) => (d.id === dealerId ? { ...d, persona: updated.persona } : d)) ?? prev
       );
@@ -430,8 +436,19 @@ export function useCallCenter(specId: string) {
     []
   );
 
+  const setDealerStatus = useCallback(
+    async (dealerId: string, status: "active" | "declined") => {
+      const updated = await updateDealer(dealerId, { status });
+      setDealers((prev) =>
+        prev?.map((d) => (d.id === dealerId ? { ...d, status: updated.status } : d)) ?? prev
+      );
+    },
+    []
+  );
+
   const callAll = useCallback(() => {
     dealers?.forEach((d) => {
+      if (d.status === "declined") return;
       const s = calls[d.id]?.state ?? "idle";
       if (s !== "idle" && s !== "failed") return;
       if (USE_MOCKS) runMockCall(d, nextRound(d.id));
@@ -452,6 +469,7 @@ export function useCallCenter(specId: string) {
     callAll,
     hangUp,
     setPersona,
+    setDealerStatus,
     roleplay,
     setRoleplay,
     finishRoleplaySession,

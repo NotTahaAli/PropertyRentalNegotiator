@@ -3,8 +3,8 @@
 import Button from "@/components/ui/Button";
 import StateBadge from "./StateBadge";
 import { PERSONA_HINTS } from "@/lib/mocks";
-import { PERSONAS, type Dealer, type Persona } from "@/lib/types";
-import { MAX_ROUNDS, type DealerCallState } from "@/lib/useCallCenter";
+import { PERSONAS, type Dealer, type DealerStatus, type Persona } from "@/lib/types";
+import type { DealerCallState } from "@/lib/useCallCenter";
 
 interface DealerCardProps {
   dealer: Dealer;
@@ -15,6 +15,7 @@ interface DealerCardProps {
   onCall: () => void;
   onPersonaChange: (persona: Persona) => void;
   onRoleplayChange: (on: boolean) => void;
+  onStatusChange: (status: DealerStatus) => void;
 }
 
 export default function DealerCard({
@@ -26,14 +27,14 @@ export default function DealerCard({
   onCall,
   onPersonaChange,
   onRoleplayChange,
+  onStatusChange,
 }: DealerCardProps) {
   const { state, outcome, quotes } = callState;
   const busy = state === "calling" || state === "live";
   // "human" has no ElevenLabs agent — bridge calls need a persona assigned first.
   // Roleplay doesn't need one: a human is on the line either way.
   const noBridgeAgent = !roleplay && dealer.persona === "human";
-  // 2 rounds max (round 1 + leverage round 2) — no round 3.
-  const roundsExhausted = state === "done" && (callState.round ?? 1) >= MAX_ROUNDS;
+  const declined = dealer.status === "declined";
 
   return (
     <div
@@ -111,10 +112,22 @@ export default function DealerCard({
       )}
 
       <div className="mt-3 flex items-center justify-between gap-3">
-        {roundsExhausted ? (
-          <p className="font-mono text-[11px] uppercase tracking-wide text-text-dim">
-            Negotiation complete — {MAX_ROUNDS} rounds done
-          </p>
+        {declined ? (
+          <>
+            <p className="font-mono text-[11px] uppercase tracking-wide text-error">
+              Declined
+            </p>
+            <Button
+              variant="secondary"
+              className="px-4 py-1.5 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                onStatusChange("active");
+              }}
+            >
+              Reactivate
+            </Button>
+          </>
         ) : (
           <>
             <Button
@@ -136,20 +149,33 @@ export default function DealerCard({
                     : "Call"}
             </Button>
 
-            {/* role-play mode toggle — primary demo path, not a fallback */}
-            <label
-              className="flex cursor-pointer items-center gap-2 text-xs text-text-secondary"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <input
-                type="checkbox"
-                checked={roleplay}
+            <div className="flex items-center gap-3">
+              {/* role-play mode toggle — primary demo path, not a fallback */}
+              <label
+                className="flex cursor-pointer items-center gap-2 text-xs text-text-secondary"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={roleplay}
+                  disabled={busy}
+                  onChange={(e) => onRoleplayChange(e.target.checked)}
+                  className="accent-[#CFA44E]"
+                />
+                Answer as dealer
+              </label>
+              <button
+                type="button"
                 disabled={busy}
-                onChange={(e) => onRoleplayChange(e.target.checked)}
-                className="accent-[#CFA44E]"
-              />
-              Answer as dealer
-            </label>
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStatusChange("declined");
+                }}
+                className="text-[11px] text-text-dim hover:text-error disabled:opacity-50"
+              >
+                Decline
+              </button>
+            </div>
           </>
         )}
       </div>

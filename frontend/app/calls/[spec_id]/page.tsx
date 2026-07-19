@@ -7,7 +7,7 @@ import DealerCard from "@/components/calls/DealerCard";
 import CallStatusPanel from "@/components/calls/CallStatusPanel";
 import QuoteChip from "@/components/calls/QuoteChip";
 import { MOCK_DEALERS, MOCK_REPORT } from "@/lib/mocks";
-import { MAX_ROUNDS, useCallCenter } from "@/lib/useCallCenter";
+import { useCallCenter } from "@/lib/useCallCenter";
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
@@ -26,6 +26,7 @@ export default function CallCenterPage() {
     callAll,
     hangUp,
     setPersona,
+    setDealerStatus,
     roleplay,
     setRoleplay,
     finishRoleplaySession,
@@ -54,12 +55,15 @@ export default function CallCenterPage() {
   }, [callParam, dealers]);
 
   const anyIdle = dealers?.some((d) => {
+    if (d.status === "declined") return false;
     const s = stateFor(d.id).state;
     return s === "idle" || s === "failed";
   });
-  // terminal = done or failed; "calling"/"live" mean this round isn't over yet
+  // terminal = done or failed, or manually declined even without a call yet;
+  // "calling"/"live" mean this round isn't over yet
   const allTerminal =
     !!dealers && dealers.length > 0 && dealers.every((d) => {
+      if (d.status === "declined") return true;
       const s = stateFor(d.id).state;
       return s === "done" || s === "failed";
     });
@@ -130,6 +134,7 @@ export default function CallCenterPage() {
                 onCall={() => call(d.id)}
                 onPersonaChange={(p) => void setPersona(d.id, p)}
                 onRoleplayChange={(on) => setRoleplay(d.id, on)}
+                onStatusChange={(s) => void setDealerStatus(d.id, s)}
               />
             ))}
           </div>
@@ -149,7 +154,9 @@ export default function CallCenterPage() {
             {(() => {
               const s = selectedDealer ? stateFor(selectedDealer.id) : null;
               if (s && s.quotes.length > 0) {
-                const canFollowUp = s.state === "done" && (s.round ?? 1) < MAX_ROUNDS;
+                // Rounds are unlimited; a follow-up just isn't offered while a
+                // call is in flight or the dealer has been declined.
+                const canFollowUp = s.state === "done" && selectedDealer?.status !== "declined";
                 return s.quotes.map((q, i) => (
                   <div key={q.id ?? i} className="flex flex-col gap-2">
                     <QuoteChip quote={q} live={s.state === "live"} />

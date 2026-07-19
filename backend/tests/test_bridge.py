@@ -669,6 +669,36 @@ def test_dealer_init_keeps_factory_first_message():
     msg = json.loads(bridge._dealer_init())
 
     assert "conversation_config_override" not in msg
+    assert msg["dynamic_variables"] == {}
+
+
+def test_dealer_init_carries_persona_anchor_vars():
+    msg = json.loads(bridge._dealer_init({"asking_rent": 150000, "advance_months": 2}))
+
+    assert msg["dynamic_variables"] == {"asking_rent": 150000, "advance_months": 2}
+
+
+def test_finalize_call_blocks_dealer_on_declined_outcome(monkeypatch):
+    monkeypatch.setattr(
+        bridge.crud, "update_call", lambda call_id, fields: {"id": call_id, "dealer_id": "d1", **fields}
+    )
+    blocked = []
+    monkeypatch.setattr(bridge.crud, "update_dealer", lambda id, fields: blocked.append((id, fields)))
+
+    bridge.finalize_call("call-1", {"status": "completed", "outcome": "declined"})
+
+    assert blocked == [("d1", {"status": "declined"})]
+
+
+def test_finalize_call_leaves_dealer_alone_on_quote_outcome(monkeypatch):
+    monkeypatch.setattr(
+        bridge.crud, "update_call", lambda call_id, fields: {"id": call_id, "dealer_id": "d1", **fields}
+    )
+    monkeypatch.setattr(
+        bridge.crud, "update_dealer", lambda id, fields: (_ for _ in ()).throw(AssertionError)
+    )
+
+    bridge.finalize_call("call-1", {"status": "completed", "outcome": "quote"})
 
 
 def test_run_bridge_has_no_time_cap_but_silence_watchdog_still_ends_it(monkeypatch):

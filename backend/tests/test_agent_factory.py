@@ -139,18 +139,19 @@ def test_set_spec_field_client_tool_covers_every_spec_field_typed():
     assert "YYYY-MM-DD" in props["move_in"]["description"]
 
 
-def test_estimator_and_negotiator_get_end_call():
+def test_everyone_on_the_bridge_gets_end_call():
     # Negotiator must be able to hang up — without it a bridge call has no
     # terminator and loops goodbyes forever (live bug once the 3:00 cap was
-    # removed). Personas deliberately don't get it: the negotiator drives
-    # closure, and a persona hanging up on its own would cut real calls short.
+    # removed). Personas also get end_call: the negotiator normally drives
+    # closure, but a persona needs to be able to hang up too if the negotiator
+    # stalls, so neither side can loop forever.
     config = load_vertical()
     by_name = {a.name: a for a in build_agents(config)}
     assert by_name["estimator"].tool_names == ["set_spec_field"]
     assert by_name["estimator"].end_call is True
     assert by_name["negotiator"].end_call is True
     for persona in ("stonewaller", "lowballer", "upseller", "firm"):
-        assert by_name[persona].end_call is False
+        assert by_name[persona].end_call is True
 
 
 def test_build_agents_uses_configured_llm_split():

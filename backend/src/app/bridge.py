@@ -252,6 +252,18 @@ def derive_outcome(transcript: list[dict], has_quote: bool = False) -> str:
     return "callback"
 
 
+def finalize_call(call_id: str, fields: dict) -> dict:
+    """Write the terminal call row and auto-block the dealer on a decline.
+
+    `crud.update_call` returns the full row (including dealer_id), so callers
+    that never separately fetched the dealer (the webhook) still get it here.
+    """
+    call = crud.update_call(call_id, fields)
+    if fields.get("outcome") == "declined":
+        crud.update_dealer(call["dealer_id"], {"status": "declined"})
+    return call
+
+
 def _connect(agent_id: str):
     return websockets.connect(EL_WS_URL.format(agent_id=agent_id))
 
@@ -271,9 +283,12 @@ def _negotiator_init(dynamic_variables: dict) -> str:
     )
 
 
-def _dealer_init() -> str:
+def _dealer_init(dynamic_variables: dict | None = None) -> str:
     return json.dumps(
-        {"type": "conversation_initiation_client_data", "dynamic_variables": {}}
+        {
+            "type": "conversation_initiation_client_data",
+            "dynamic_variables": dynamic_variables or {},
+        }
     )
 
 
@@ -302,6 +317,7 @@ async def run_bridge(
     negotiator_agent_id: str,
     dealer_agent_id: str,
     dynamic_vars: dict,
+    dealer_vars: dict | None = None,
 ) -> None:
     sink = CallSink(call_id)
     stop_event = _stop_events[call_id] = asyncio.Event()
@@ -309,7 +325,7 @@ async def run_bridge(
     try:
         async with _connect(negotiator_agent_id) as neg_ws, _connect(dealer_agent_id) as deal_ws:
             await neg_ws.send(_negotiator_init(dynamic_vars))
-            await deal_ws.send(_dealer_init())
+            await deal_ws.send(_dealer_init(dealer_vars))
 
             gate = TurnGate()
             neg_queue: asyncio.Queue = asyncio.Queue()
@@ -356,7 +372,7 @@ async def run_bridge(
             status, outcome = "completed", derive_outcome(
                 transcript, has_quote=has_logged_quote(call_id)
             )
-        crud.update_call(
+        finalize_call(
             call_id,
             {
                 "status": status,
