@@ -66,7 +66,26 @@ export const MOCK_DEALERS: Dealer[] = [
   { id: "dealer_upseller", spec_id: "spec_mock_001", name: "Upseller Dealer", persona: "upseller", phone_label: "Dealer (upseller)", source: "seed" },
   { id: "dealer_firm", spec_id: "spec_mock_001", name: "Firm Dealer", persona: "firm", phone_label: "Dealer (firm)", source: "seed" },
   // K7 dealer discovery — real dealers found via Tavily land with persona "human"
-  { id: "dealer_tavily_alpha", spec_id: "spec_mock_001", name: "Alpha Estate & Builders", persona: "human", phone_label: "https://alpha-estate.pk", source: "tavily" },
+  {
+    id: "dealer_tavily_alpha", spec_id: "spec_mock_001", name: "Alpha Estate & Builders",
+    persona: "human", phone_label: "https://alpha-estate.pk", source: "tavily",
+    phone: "0321-4567890", rating: 4.2, rating_source: "Google",
+  },
+];
+
+// "Search more dealers" — canned result for a demo click, not already in
+// MOCK_DEALERS. Real endpoint would return genuinely new businesses; rating
+// omitted on one to keep "no rating" a visibly normal state, not an edge case.
+export const MOCK_DISCOVERED_DEALERS: Dealer[] = [
+  {
+    id: "dealer_tavily_beta", spec_id: "spec_mock_001", name: "Beta Commercial Properties",
+    persona: "human", phone_label: "https://beta-properties.pk", source: "tavily",
+    phone: "0300-1122334", rating: 3.8, rating_source: "Google",
+  },
+  {
+    id: "dealer_tavily_gamma", spec_id: "spec_mock_001", name: "Gulberg Shop Consultants",
+    persona: "human", phone_label: "Gulberg III, Lahore", source: "tavily",
+  },
 ];
 
 export const PERSONA_HINTS: Record<Dealer["persona"], string> = {
@@ -341,6 +360,9 @@ export const MOCK_SPEC_FIXTURES: { item: SpecListItem; dealers: Dealer[]; calls:
       created_at: "2026-07-17T11:00:00Z",
       confirmed: true,
       spec: { location: MOCK_SPEC.location, business_type: MOCK_SPEC.business_type },
+      // No source_url yet — (b) from the plan: honest "no citation" state,
+      // ships until the backend captures one alongside the two numbers.
+      benchmark_json: { per_sqft_low: 180, per_sqft_high: 450 },
     },
     dealers: MOCK_DEALERS.filter((d) => d.persona !== "human"),
     // A dealer can contribute more than one report row (multiple properties)

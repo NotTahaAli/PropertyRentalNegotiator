@@ -109,6 +109,10 @@ export interface Dealer {
   phone_label?: string | null;
   source?: string | null;
   status?: DealerStatus;
+  // Tavily-derived; commonly null — Tavily doesn't reliably return either.
+  phone?: string | null;
+  rating?: number | null;
+  rating_source?: string | null;
 }
 
 export interface TranscriptLine {
@@ -178,11 +182,20 @@ export interface Quote {
 
 // ── Past-calls dashboard (/) — reuses JobSpec/Dealer/CallRow, no forking ──
 
+// Tavily-derived market rent range, cached on the spec at intake. source_url
+// is undefined until the backend captures one — never invent it client-side.
+export interface Benchmark {
+  per_sqft_low: number;
+  per_sqft_high: number;
+  source_url?: string | null;
+}
+
 export interface SpecListItem {
   id: string;
   created_at?: string | null;
   confirmed: boolean;
   spec: Partial<JobSpec>; // from spec_json
+  benchmark_json?: Benchmark | null;
 }
 
 export type ProgressState =

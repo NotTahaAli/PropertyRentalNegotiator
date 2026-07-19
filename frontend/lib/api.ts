@@ -1,4 +1,5 @@
 import type {
+  Benchmark,
   CallRow,
   CallStartResponse,
   Dealer,
@@ -14,6 +15,7 @@ import type {
 } from "./types";
 import {
   MOCK_DEALERS,
+  MOCK_DISCOVERED_DEALERS,
   MOCK_PARSE_RENT_AGREEMENT,
   MOCK_PARSE_REQUIREMENTS,
   MOCK_REPORT,
@@ -165,15 +167,22 @@ export async function listCalls(specId: string): Promise<CallRow[]> {
 
 // ── Past-calls dashboard (/) ──
 
+interface SpecRow {
+  id: string;
+  created_at?: string;
+  confirmed: boolean;
+  spec_json: Partial<JobSpec>;
+  benchmark_json?: Benchmark | null;
+}
+
 export async function listSpecs(): Promise<SpecListItem[]> {
-  const rows = await getJson<
-    { id: string; created_at?: string; confirmed: boolean; spec_json: Partial<JobSpec> }[]
-  >("/specs");
+  const rows = await getJson<SpecRow[]>("/specs");
   return rows.map((row) => ({
     id: row.id,
     created_at: row.created_at,
     confirmed: row.confirmed,
     spec: row.spec_json,
+    benchmark_json: row.benchmark_json,
   }));
 }
 
@@ -184,10 +193,31 @@ export async function getSpec(specId: string): Promise<SpecListItem> {
     if (fixture) return fixture.item;
     return { id: specId, confirmed: true, spec: {} };
   }
-  const row = await getJson<{ id: string; created_at?: string; confirmed: boolean; spec_json: Partial<JobSpec> }>(
-    `/specs/${encodeURIComponent(specId)}`
-  );
-  return { id: row.id, created_at: row.created_at, confirmed: row.confirmed, spec: row.spec_json };
+  const row = await getJson<SpecRow>(`/specs/${encodeURIComponent(specId)}`);
+  return {
+    id: row.id,
+    created_at: row.created_at,
+    confirmed: row.confirmed,
+    spec: row.spec_json,
+    benchmark_json: row.benchmark_json,
+  };
+}
+
+// ── Dealer discovery (on-demand, from the Call Center header) ──
+
+export async function discoverMoreDealers(
+  specId: string
+): Promise<{ added: Dealer[]; skipped_duplicates: number }> {
+  if (USE_MOCKS) {
+    await new Promise((r) => setTimeout(r, 1200));
+    return { added: MOCK_DISCOVERED_DEALERS, skipped_duplicates: 0 };
+  }
+  const r = await fetch(`${BASE}/specs/${encodeURIComponent(specId)}/dealers/discover`, {
+    method: "POST",
+    headers: await authHeaders(),
+  });
+  if (!r.ok) throw new Error(`discover dealers failed: ${r.status}`);
+  return r.json();
 }
 
 export async function listSpecsWithProgress(): Promise<SpecListEntry[]> {

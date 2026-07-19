@@ -5,8 +5,9 @@ import { useParams } from "next/navigation";
 import RankedTable from "@/components/report/RankedTable";
 import RecommendationBlock from "@/components/report/RecommendationBlock";
 import Button from "@/components/ui/Button";
-import { getReport, reflagSpec } from "@/lib/api";
-import type { Report } from "@/lib/types";
+import BenchmarkBadge from "@/components/spec/BenchmarkBadge";
+import { getReport, getSpec, reflagSpec } from "@/lib/api";
+import type { Benchmark, Report } from "@/lib/types";
 
 export default function ReportPage() {
   const params = useParams<{ spec_id: string }>();
@@ -15,6 +16,17 @@ export default function ReportPage() {
   const [error, setError] = useState<string | null>(null);
   const [rechecking, setRechecking] = useState(false);
   const [recheckNote, setRecheckNote] = useState<string | null>(null);
+  const [benchmark, setBenchmark] = useState<Benchmark | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSpec(specId)
+      .then((s) => !cancelled && setBenchmark(s.benchmark_json ?? null))
+      .catch(() => !cancelled && setBenchmark(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [specId]);
 
   const load = useCallback(
     (isCancelled?: () => boolean) =>
@@ -72,6 +84,9 @@ export default function ReportPage() {
             Every dealer, ranked by total first-year cost, with red flags and
             transcript evidence for the recommended deal.
           </p>
+          <div className="mt-3 print:hidden">
+            <BenchmarkBadge benchmark={benchmark} />
+          </div>
         </div>
         {report && (
           <div className="flex flex-col items-end gap-1.5">
