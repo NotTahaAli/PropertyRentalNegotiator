@@ -100,13 +100,27 @@ def evaluate_red_flags(
     }
 
 
+def _norm_property_ref(ref: str | None) -> str | None:
+    # "" and None are the same "no identifier" bucket (single-property dealer).
+    return ref or None
+
+
 @tools_router.post("/log_quote")
 def log_quote(body: QuoteCreate) -> dict[str, Any]:
     call = _get_or_404(crud.get_call(body.call_id))
     spec = _get_or_404(crud.get_spec(call["spec_id"]))
-    # Upsert per call: partial quotes get logged the moment the first number
-    # lands and later calls merge in the rest (agent tool prompts this flow).
-    existing = next(iter(crud.list_quotes(call_id=body.call_id)), None)
+    # Upsert per (call, property): partial quotes get logged the moment the
+    # first number lands and later calls for the *same* property merge in the
+    # rest (agent tool prompts this flow). A different property_ref is a
+    # different shop, so it gets its own row instead of overwriting.
+    existing = next(
+        (
+            q
+            for q in crud.list_quotes(call_id=body.call_id)
+            if _norm_property_ref(q.get("property_ref")) == _norm_property_ref(body.property_ref)
+        ),
+        None,
+    )
     if existing is not None:
         merged = {k: existing.get(k) for k in QuoteCreate.model_fields if k in existing}
         merged.update({k: v for k, v in body.model_dump().items() if v is not None})
@@ -157,6 +171,7 @@ def get_leverage(body: LeverageRequest) -> dict[str, Any]:
         "quotes": [
             {
                 "dealer": dealer_names.get(q["dealer_id"], "unknown"),
+                "property": q.get("property_ref"),
                 "monthly_rent": q["monthly_rent"],
                 "advance_months": q["advance_months"],
                 "commission": q["commission"],

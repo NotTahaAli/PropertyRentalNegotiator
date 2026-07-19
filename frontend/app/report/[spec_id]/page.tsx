@@ -99,7 +99,7 @@ export default function ReportPage() {
       {report && (
         <div className="flex flex-col gap-6">
           <RecommendationBlock specId={specId} report={report} />
-          <RankedTable specId={specId} rows={report.rows} recommendedDealerId={report.recommended_dealer_id} />
+          <RankedTable specId={specId} rows={report.rows} recommendedRowId={report.recommended_row_id} />
         </div>
       )}
     </div>

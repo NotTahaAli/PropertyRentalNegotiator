@@ -27,7 +27,7 @@ export default function DealerCard({
   onPersonaChange,
   onRoleplayChange,
 }: DealerCardProps) {
-  const { state, outcome, quote } = callState;
+  const { state, outcome, quotes } = callState;
   const busy = state === "calling" || state === "live";
   // "human" has no ElevenLabs agent — bridge calls need a persona assigned first.
   // Roleplay doesn't need one: a human is on the line either way.
@@ -83,13 +83,17 @@ export default function DealerCard({
       {/* done summary line */}
       {state === "done" && (
         <p className="mt-2 text-xs">
-          {outcome === "quote" && quote ? (
+          {outcome === "quote" && quotes.length > 0 ? (
             <span className="text-success">
-              Quoted PKR {new Intl.NumberFormat("en-PK").format(quote.total_first_year)} first year
-              {quote.flagged && (
+              {quotes.length === 1
+                ? `Quoted PKR ${new Intl.NumberFormat("en-PK").format(quotes[0].total_first_year)} first year`
+                : `${quotes.length} quotes — cheapest PKR ${new Intl.NumberFormat("en-PK").format(
+                    Math.min(...quotes.map((q) => q.total_first_year))
+                  )} first year`}
+              {quotes.some((q) => q.flagged) && (
                 <span
                   className="ml-2 rounded-md bg-error-dim px-2 py-0.5 font-mono text-[10px] text-error"
-                  title={quote.flag_reason ?? undefined}
+                  title={quotes.find((q) => q.flagged)?.flag_reason ?? undefined}
                 >
                   flagged
                 </span>

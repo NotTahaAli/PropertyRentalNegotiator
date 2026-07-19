@@ -2,7 +2,9 @@ import CitationLink from "./CitationLink";
 import type { Report } from "@/lib/types";
 
 export default function RecommendationBlock({ specId, report }: { specId: string; report: Report }) {
-  const row = report.rows.find((r) => r.dealer_id === report.recommended_dealer_id);
+  // Matched by row_id, not dealer_id — a dealer can produce several rows (one
+  // per property), and only one of them is the actual recommendation.
+  const row = report.rows.find((r) => r.row_id === report.recommended_row_id);
 
   return (
     <div className="rounded-xl border border-accent/60 bg-accent-dim p-5 sm:p-6">

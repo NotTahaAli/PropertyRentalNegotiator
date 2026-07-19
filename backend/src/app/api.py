@@ -66,6 +66,8 @@ class CallStartRequest(BaseModel):
     dealer_id: str
     round: int = 1
     mode: str = "bridge"
+    # Scopes a follow-up call to one of a dealer's several matching properties.
+    focus_property_ref: Optional[str] = None
 
 
 class QuoteCreate(BaseModel):
@@ -77,6 +79,10 @@ class QuoteCreate(BaseModel):
     maintenance: Optional[float] = None
     annual_increment_pct: Optional[float] = None
     other_fees: Optional[dict[str, Any]] = None
+    # Identifies which of a dealer's several matching shops this quote is for.
+    # None/"" both mean "no identifier" (single-property dealer) — see
+    # tools.log_quote's upsert key.
+    property_ref: Optional[str] = None
     # Tri-state on purpose: True = written quote confirmed, False = dealer would
     # not commit in writing, None = not established. Defaulting to False made
     # "unknown" indistinguishable from "refused" and tripped the no_written_quote
@@ -253,7 +259,9 @@ def _agent_manifest() -> dict[str, str]:
 _bridge_tasks: set[asyncio.Task] = set()
 
 
-def _dynamic_variables(spec: dict[str, Any], call_id: str, dealer_id: str) -> dict[str, Any]:
+def _dynamic_variables(
+    spec: dict[str, Any], call_id: str, dealer_id: str, focus_property_ref: str | None = None
+) -> dict[str, Any]:
     config = load_vertical()
     return {
         **spec["spec_json"],
@@ -261,6 +269,10 @@ def _dynamic_variables(spec: dict[str, Any], call_id: str, dealer_id: str) -> di
         "call_id": call_id,
         "dealer_id": dealer_id,
         "spec_id": spec["id"],
+        # Always present (empty default) so the prompt's {{focus_property}}
+        # placeholder always resolves — a missing dynamic variable can break
+        # the ElevenLabs conversation.
+        "focus_property": focus_property_ref or "",
     }
 
 
@@ -289,7 +301,7 @@ async def start_call(
     )
     call_id = call["id"]
     agents = _agent_manifest()
-    dynamic_vars = _dynamic_variables(spec, call_id, body.dealer_id)
+    dynamic_vars = _dynamic_variables(spec, call_id, body.dealer_id, body.focus_property_ref)
 
     if body.mode == "roleplay":
         return {

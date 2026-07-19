@@ -145,6 +145,9 @@ export interface Quote {
   notes?: string | null;
   flagged?: boolean;
   flag_reason?: string | null;
+  // Identifies which of a dealer's several matching shops this quote is for.
+  // null/absent = the dealer's single/only property.
+  property_ref?: string | null;
 }
 
 // ── Past-calls dashboard (/) — reuses JobSpec/Dealer/CallRow, no forking ──
@@ -173,6 +176,12 @@ export interface ReportRow {
   dealer_id: string;
   dealer_name: string;
   persona: Persona;
+  // Which of the dealer's properties this row is for; null for a single-property
+  // dealer. Combined with dealer_id, distinguishes several rows from one dealer.
+  property_ref?: string | null;
+  // Stable per-row key (`${dealer_id}:${property_ref ?? ""}`) — use as the React
+  // key and to match recommended_row_id; a dealer can produce several rows.
+  row_id: string;
   rank: number | null; // null only for declined/no-quote dealers — never omitted, just unranked
   quote: Quote | null;
   round: number;
@@ -189,6 +198,9 @@ export interface Report {
   rows: ReportRow[];
   // null when no dealer produced a quote — recommendation_text explains why.
   recommended_dealer_id: string | null;
+  // Identifies the specific recommended row (dealer+property) — use this to
+  // highlight the right row when a dealer has more than one.
+  recommended_row_id: string | null;
   recommendation_text: string;
   // no separate citation field — RecommendationBlock reads call_number/citation_line
   // off the recommended row itself, so the table and the recommendation can't drift apart.

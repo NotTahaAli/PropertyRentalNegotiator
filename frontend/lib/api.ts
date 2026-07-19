@@ -117,12 +117,19 @@ export async function startCall(
   specId: string,
   dealerId: string,
   mode: "bridge" | "roleplay" = "bridge",
-  round: number = 1
+  round: number = 1,
+  focusPropertyRef?: string
 ): Promise<CallStartResponse> {
   const r = await fetch(`${BASE}/calls/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ spec_id: specId, dealer_id: dealerId, round, mode }),
+    body: JSON.stringify({
+      spec_id: specId,
+      dealer_id: dealerId,
+      round,
+      mode,
+      ...(focusPropertyRef ? { focus_property_ref: focusPropertyRef } : {}),
+    }),
   });
   if (!r.ok) throw new Error(`start call failed: ${r.status}`);
   return r.json();

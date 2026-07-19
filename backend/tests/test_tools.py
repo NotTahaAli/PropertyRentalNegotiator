@@ -412,6 +412,7 @@ def test_get_leverage_sorted_top3_with_names(monkeypatch):
     assert body["quotes"][0]["dealer"] == "Metro Realty"
     assert set(body["quotes"][0]) == {
         "dealer",
+        "property",
         "monthly_rent",
         "advance_months",
         "commission",
@@ -437,9 +438,144 @@ def test_get_leverage_empty_when_nothing_qualifies(monkeypatch):
     assert _leverage("d1").json() == {"quotes": []}
 
 
+def test_get_leverage_includes_property_to_distinguish_a_dealer_s_shops(monkeypatch):
+    quotes_by_call = {
+        "c1": [
+            {**_quote("d2", 1900000), "property_ref": "Shop 2"},
+            {**_quote("d2", 2100000), "property_ref": "Shop 7"},
+        ],
+    }
+    _wire_leverage(monkeypatch, quotes_by_call)
+    body = _leverage("d1").json()
+    assert {q["property"] for q in body["quotes"]} == {"Shop 2", "Shop 7"}
+
+
 def test_get_leverage_unknown_spec_404(monkeypatch):
     monkeypatch.setattr(crud, "get_spec", lambda id: None)
     assert _leverage().status_code == 404
+
+
+def _wire_upserting_call_multi(monkeypatch):
+    """Stateful quote store supporting multiple property-discriminated rows per call."""
+    store: dict[str, dict] = {}
+    counter = {"n": 0}
+    monkeypatch.setattr(crud, "get_call", lambda id: {"id": id, "spec_id": "s1"} if id == "c1" else None)
+    monkeypatch.setattr(crud, "get_spec", lambda id: _spec())
+
+    def fake_create(row):
+        counter["n"] += 1
+        qid = f"q{counter['n']}"
+        store[qid] = {"id": qid, **row}
+        return store[qid]
+
+    def fake_update(id, fields):
+        store[id] = {**store[id], **fields}
+        return store[id]
+
+    monkeypatch.setattr(crud, "create_quote", fake_create)
+    monkeypatch.setattr(crud, "update_quote", fake_update)
+    monkeypatch.setattr(crud, "list_quotes", lambda call_id: list(store.values()) if call_id == "c1" else [])
+    return store
+
+
+def test_log_quote_two_properties_same_call_create_two_rows(monkeypatch):
+    store = _wire_upserting_call_multi(monkeypatch)
+
+    r1 = client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 200000, "property_ref": "Shop 4"},
+        headers=_headers(),
+    )
+    r2 = client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 250000, "property_ref": "Shop 7"},
+        headers=_headers(),
+    )
+
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json()["quote_id"] != r2.json()["quote_id"]
+    assert len(store) == 2
+    assert {q["property_ref"] for q in store.values()} == {"Shop 4", "Shop 7"}
+
+
+def test_log_quote_same_property_ref_merges_into_one_row(monkeypatch):
+    store = _wire_upserting_call_multi(monkeypatch)
+
+    client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 200000, "property_ref": "Shop 4"},
+        headers=_headers(),
+    )
+    client.post(
+        "/tools/log_quote",
+        json={
+            "call_id": "c1",
+            "dealer_id": "d1",
+            "monthly_rent": 200000,
+            "advance_months": 2,
+            "binding": True,
+            "property_ref": "Shop 4",
+        },
+        headers=_headers(),
+    )
+
+    assert len(store) == 1
+    q = next(iter(store.values()))
+    assert q["advance_months"] == 2
+    assert q["binding"] is True
+
+
+def test_log_quote_no_property_ref_still_merges_single_row(monkeypatch):
+    """Back-compat: omitting property_ref on both calls keeps today's one-row-per-call behavior."""
+    store = _wire_upserting_call_multi(monkeypatch)
+
+    client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 200000},
+        headers=_headers(),
+    )
+    client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 200000, "advance_months": 2},
+        headers=_headers(),
+    )
+
+    assert len(store) == 1
+
+
+def test_log_quote_property_ref_and_no_ref_are_distinct_rows(monkeypatch):
+    """A quote scoped to a shop must not merge into an earlier no-identifier quote."""
+    store = _wire_upserting_call_multi(monkeypatch)
+
+    client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 200000},
+        headers=_headers(),
+    )
+    client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 250000, "property_ref": "Shop 7"},
+        headers=_headers(),
+    )
+
+    assert len(store) == 2
+
+
+def test_log_quote_empty_string_property_ref_same_as_none(monkeypatch):
+    store = _wire_upserting_call_multi(monkeypatch)
+
+    client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 200000, "property_ref": ""},
+        headers=_headers(),
+    )
+    client.post(
+        "/tools/log_quote",
+        json={"call_id": "c1", "dealer_id": "d1", "monthly_rent": 250000},
+        headers=_headers(),
+    )
+
+    assert len(store) == 1
 
 
 def test_log_quote_unknown_call_404(monkeypatch):

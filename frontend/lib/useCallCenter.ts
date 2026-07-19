@@ -28,7 +28,8 @@ export interface DealerCallState {
   startedAt?: number; // epoch ms, set when the call goes live
   transcript: TranscriptLine[];
   outcome?: CallOutcome;
-  quote?: Quote | null;
+  // A dealer may log more than one quote (one per matching property).
+  quotes: Quote[];
   recordingUrl?: string | null;
   error?: string;
   mode?: "bridge" | "roleplay";
@@ -36,7 +37,7 @@ export interface DealerCallState {
   dynamicVariables?: Record<string, string | number | boolean>;
 }
 
-const IDLE: DealerCallState = { state: "idle", transcript: [] };
+const IDLE: DealerCallState = { state: "idle", transcript: [], quotes: [] };
 
 export function useCallCenter(specId: string) {
   const [dealers, setDealers] = useState<Dealer[] | null>(null);
@@ -109,14 +110,14 @@ export function useCallCenter(specId: string) {
           } else {
             clearInterval(reveal);
             const outcome = MOCK_OUTCOMES[dealer.persona];
-            const quote =
+            const quotes =
               round >= 2
-                ? (MOCK_QUOTES_ROUND2[dealer.persona] ?? MOCK_QUOTES[dealer.persona] ?? null)
-                : (MOCK_QUOTES[dealer.persona] ?? null);
+                ? (MOCK_QUOTES_ROUND2[dealer.persona] ?? MOCK_QUOTES[dealer.persona] ?? [])
+                : (MOCK_QUOTES[dealer.persona] ?? []);
             patch(dealer.id, {
               state: "done",
               outcome,
-              quote,
+              quotes,
               recordingUrl: mockRecordingUrl(),
             });
           }
@@ -145,11 +146,11 @@ export function useCallCenter(specId: string) {
               : prev
           );
           if (call.status === "running") {
-            // live quote: log_quote writes the row mid-call, so surface it as
-            // soon as it lands instead of waiting for the call to complete
+            // live quotes: log_quote writes rows mid-call, so surface them as
+            // soon as they land instead of waiting for the call to complete
             try {
-              const q = (await listQuotes(callId))[0];
-              if (q) patch(dealerId, { quote: q });
+              const qs = await listQuotes(callId);
+              if (qs.length > 0) patch(dealerId, { quotes: qs });
             } catch {}
             return;
           }
@@ -163,13 +164,13 @@ export function useCallCenter(specId: string) {
             });
             return;
           }
-          // completed — transcript arrives whole; fetch quote + recording.
-          // quote undefined = fetch failed: keep whatever the live poll already
-          // surfaced instead of clobbering it with null.
-          let quote: Quote | null | undefined;
+          // completed — transcript arrives whole; fetch quotes + recording.
+          // quotes undefined = fetch failed: keep whatever the live poll already
+          // surfaced instead of clobbering it with an empty list.
+          let quotes: Quote[] | undefined;
           let recordingUrl: string | null = null;
           try {
-            quote = (await listQuotes(callId))[0] ?? null;
+            quotes = await listQuotes(callId);
           } catch {}
           try {
             recordingUrl = await getRecordingUrl(callId);
@@ -177,11 +178,11 @@ export function useCallCenter(specId: string) {
           patch(dealerId, {
             state: "done",
             transcript: call.transcript_json ?? [],
-            // A quote we actually fetched outranks the stored outcome. Without
+            // Quotes we actually fetched outrank the stored outcome. Without
             // this, a call that produced a real itemised quote could still show
             // "Dealer asked for a callback — no numbers committed".
-            outcome: quote ? "quote" : call.outcome ?? "callback",
-            ...(quote !== undefined ? { quote } : {}),
+            outcome: quotes && quotes.length > 0 ? "quote" : call.outcome ?? "callback",
+            ...(quotes !== undefined ? { quotes } : {}),
             recordingUrl,
           });
         } catch {
@@ -233,10 +234,10 @@ export function useCallCenter(specId: string) {
           pollUntilDone(dealer.id, c.id);
           continue;
         }
-        let quote: Quote | null = null;
+        let quotes: Quote[] = [];
         let recordingUrl: string | null = null;
         try {
-          quote = (await listQuotes(c.id))[0] ?? null;
+          quotes = await listQuotes(c.id);
         } catch {}
         try {
           recordingUrl = await getRecordingUrl(c.id);
@@ -251,10 +252,10 @@ export function useCallCenter(specId: string) {
           outcome:
             c.status === "failed"
               ? "failed"
-              : quote
+              : quotes.length > 0
                 ? "quote"
                 : c.outcome ?? "callback",
-          quote,
+          quotes,
           recordingUrl,
         });
       }
@@ -265,11 +266,11 @@ export function useCallCenter(specId: string) {
   }, [dealers, specId, hydratePatch, pollUntilDone]);
 
   const runRealCall = useCallback(
-    async (dealer: Dealer, round: number) => {
+    async (dealer: Dealer, round: number, focusPropertyRef?: string) => {
       patch(dealer.id, { state: "calling", round, mode: "bridge", transcript: [], error: undefined });
       let callId: string;
       try {
-        const res = await startCall(specId, dealer.id, "bridge", round);
+        const res = await startCall(specId, dealer.id, "bridge", round, focusPropertyRef);
         callId = res.call_id;
       } catch {
         patch(dealer.id, { state: "failed", error: "Could not start call — backend unreachable?" });
@@ -282,10 +283,10 @@ export function useCallCenter(specId: string) {
   );
 
   const startRoleplay = useCallback(
-    async (dealer: Dealer, round: number) => {
+    async (dealer: Dealer, round: number, focusPropertyRef?: string) => {
       patch(dealer.id, { state: "calling", round, mode: "roleplay", transcript: [], error: undefined });
       try {
-        const res = await startCall(specId, dealer.id, "roleplay", round);
+        const res = await startCall(specId, dealer.id, "roleplay", round, focusPropertyRef);
         patch(dealer.id, {
           state: "live",
           callId: res.call_id,
@@ -329,16 +330,16 @@ export function useCallCenter(specId: string) {
           ? (MOCK_TRANSCRIPTS_ROUND2[dealer.persona] ?? MOCK_TRANSCRIPTS[dealer.persona])
           : MOCK_TRANSCRIPTS[dealer.persona];
       const outcome = MOCK_OUTCOMES[dealer.persona];
-      const quote =
+      const quotes =
         round >= 2
-          ? (MOCK_QUOTES_ROUND2[dealer.persona] ?? MOCK_QUOTES[dealer.persona] ?? null)
-          : (MOCK_QUOTES[dealer.persona] ?? null);
+          ? (MOCK_QUOTES_ROUND2[dealer.persona] ?? MOCK_QUOTES[dealer.persona] ?? [])
+          : (MOCK_QUOTES[dealer.persona] ?? []);
       patch(dealerId, {
         state: "done",
         round,
         transcript: lines,
         outcome,
-        quote,
+        quotes,
         recordingUrl: mockRecordingUrl(),
       });
     },
@@ -372,6 +373,27 @@ export function useCallCenter(specId: string) {
     [dealers, calls, clearTimers, runMockCall, runRealCall, startRoleplay, roleplay, nextRound]
   );
 
+  // Scoped follow-up: same round-advance rule as call(), but targets one of
+  // the dealer's several properties (focus_property_ref) instead of the
+  // dealer as a whole.
+  const followUp = useCallback(
+    (dealerId: string, propertyRef: string) => {
+      const dealer = dealers?.find((d) => d.id === dealerId);
+      if (!dealer) return;
+      const prev = calls[dealerId];
+      const current = prev?.state ?? "idle";
+      if (current === "calling" || current === "live") return;
+      if (current === "done" && (prev?.round ?? 1) >= MAX_ROUNDS) return; // capped, no round 3
+      clearTimers(dealerId);
+      setSelected(dealerId);
+      const round = nextRound(dealerId);
+      if (USE_MOCKS) runMockCall(dealer, round);
+      else if (roleplay[dealerId]) void startRoleplay(dealer, round, propertyRef);
+      else void runRealCall(dealer, round, propertyRef);
+    },
+    [dealers, calls, clearTimers, runMockCall, runRealCall, startRoleplay, roleplay, nextRound]
+  );
+
   // manual early hang-up. Mock: settle the call locally. Bridge: ask the
   // backend to stop; the already-running status poll picks up "completed".
   // Roleplay hangs up through its own session controls, not here.
@@ -384,7 +406,7 @@ export function useCallCenter(specId: string) {
         patch(dealerId, {
           state: "done",
           outcome: "callback",
-          quote: null,
+          quotes: [],
           recordingUrl: mockRecordingUrl(),
         });
         return;
@@ -426,6 +448,7 @@ export function useCallCenter(specId: string) {
     selected,
     select: setSelected,
     call,
+    followUp,
     callAll,
     hangUp,
     setPersona,

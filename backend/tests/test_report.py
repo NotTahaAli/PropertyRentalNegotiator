@@ -38,9 +38,9 @@ def _call(id, dealer_id, round, started_at, outcome="quote", transcript=None, re
     }
 
 
-def _quote(call_id, dealer_id, total, rent=100000, flagged=False, reason=None, binding=True):
+def _quote(call_id, dealer_id, total, rent=100000, flagged=False, reason=None, binding=True, property_ref=None):
     return {
-        "id": f"q-{call_id}",
+        "id": f"q-{call_id}-{property_ref or 'x'}",
         "call_id": call_id,
         "dealer_id": dealer_id,
         "monthly_rent": rent,
@@ -51,6 +51,7 @@ def _quote(call_id, dealer_id, total, rent=100000, flagged=False, reason=None, b
         "binding": binding,
         "flagged": flagged,
         "flag_reason": reason,
+        "property_ref": property_ref,
     }
 
 
@@ -337,3 +338,67 @@ def test_declined_outcome_survives_when_there_is_no_quote(monkeypatch):
 
     assert row["outcome"] == "declined"
     assert row["rank"] is None
+
+
+# --- multiple properties per dealer ---------------------------------------
+
+def test_two_properties_from_one_dealer_produce_two_ranked_rows(monkeypatch):
+    dealers = [_dealer("d1", "Multi", "upseller")]
+    calls = [_call("c1", "d1", 1, "2026-01-01T10:00:00Z")]
+    quotes = {
+        "c1": [
+            _quote("c1", "d1", 2_000_000, property_ref="Shop 2"),
+            _quote("c1", "d1", 1_500_000, property_ref="Shop 7"),
+        ],
+    }
+    _wire(monkeypatch, dealers, calls, quotes)
+
+    result = report.build_report(SPEC_ID)
+    rows = [r for r in result["rows"] if r["dealer_id"] == "d1"]
+
+    assert len(rows) == 2
+    assert len({r["row_id"] for r in rows}) == 2
+    assert {r["property_ref"] for r in rows} == {"Shop 2", "Shop 7"}
+    assert sorted(r["rank"] for r in rows) == [1, 2]
+
+    cheapest = next(r for r in rows if r["property_ref"] == "Shop 7")
+    assert result["recommended_row_id"] == cheapest["row_id"]
+    assert result["recommended_dealer_id"] == "d1"
+
+
+def test_round2_revision_of_one_property_does_not_erase_other_property(monkeypatch):
+    """A follow-up call scoped to one shop must not blank out a sibling shop's quote."""
+    dealers = [_dealer("d1", "Multi", "upseller")]
+    calls = [
+        _call("c1", "d1", 1, "2026-01-01T10:00:00Z"),
+        _call("c2", "d1", 2, "2026-01-01T12:00:00Z"),
+    ]
+    quotes = {
+        "c1": [
+            _quote("c1", "d1", 2_000_000, property_ref="Shop 2"),
+            _quote("c1", "d1", 1_500_000, property_ref="Shop 7"),
+        ],
+        "c2": [_quote("c2", "d1", 1_800_000, property_ref="Shop 2")],
+    }
+    _wire(monkeypatch, dealers, calls, quotes)
+
+    rows = report.build_report(SPEC_ID)["rows"]
+    by_ref = {r["property_ref"]: r for r in rows}
+
+    assert by_ref["Shop 2"]["quote"]["total_first_year"] == 1_800_000
+    assert by_ref["Shop 2"]["round"] == 2
+    assert by_ref["Shop 7"]["quote"]["total_first_year"] == 1_500_000
+    assert by_ref["Shop 7"]["round"] == 1
+
+
+def test_single_property_dealer_row_id_and_property_ref_unaffected(monkeypatch):
+    """Back-compat: a dealer with no property_ref still gets exactly one row."""
+    dealers = [_dealer("d1", "Firm", "firm")]
+    calls = [_call("c1", "d1", 1, "2026-01-01T10:00:00Z")]
+    _wire(monkeypatch, dealers, calls, {"c1": [_quote("c1", "d1", 1_460_000)]})
+
+    rows = report.build_report(SPEC_ID)["rows"]
+
+    assert len(rows) == 1
+    assert rows[0]["property_ref"] is None
+    assert rows[0]["row_id"] == "d1:"

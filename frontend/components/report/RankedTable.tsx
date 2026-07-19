@@ -6,17 +6,17 @@ import type { ReportRow } from "@/lib/types";
 interface RankedTableProps {
   specId: string;
   rows: ReportRow[];
-  recommendedDealerId: string | null; // null when no dealer produced a quote
+  recommendedRowId: string | null; // null when no dealer produced a quote
 }
 
-export default function RankedTable({ specId, rows, recommendedDealerId }: RankedTableProps) {
+export default function RankedTable({ specId, rows, recommendedRowId }: RankedTableProps) {
   return (
     <div className="flex flex-col gap-3">
       {rows.map((row) => {
-        const recommended = row.dealer_id === recommendedDealerId;
+        const recommended = row.row_id === recommendedRowId;
         return (
           <div
-            key={row.dealer_id}
+            key={row.row_id}
             className={`tr rounded-xl border bg-surface p-4 sm:p-5 ${
               recommended ? "border-accent/60" : "border-border"
             }`}
@@ -35,7 +35,12 @@ export default function RankedTable({ specId, rows, recommendedDealerId }: Ranke
                   {row.rank ?? "—"}
                 </span>
                 <div>
-                  <p className="font-display text-sm font-semibold text-text">{row.dealer_name}</p>
+                  <p className="font-display text-sm font-semibold text-text">
+                    {row.dealer_name}
+                    {row.property_ref && (
+                      <span className="ml-1.5 font-normal text-text-dim">— {row.property_ref}</span>
+                    )}
+                  </p>
                   {row.outcome === "declined" ? (
                     <p className="text-xs text-error">Declined — unit not available</p>
                   ) : recommended ? (

@@ -73,6 +73,35 @@ def _money(value: float | None, currency: str) -> str:
     return "unknown" if value is None else f"{currency} {value:,.0f}"
 
 
+def _report_row(
+    dealer: dict[str, Any],
+    call: dict[str, Any],
+    quote: dict[str, Any] | None,
+    call_number: dict[str, int],
+) -> dict[str, Any]:
+    property_ref = (quote or {}).get("property_ref")
+    return {
+        "dealer_id": dealer["id"],
+        "dealer_name": dealer["name"],
+        "persona": dealer["persona"],
+        "property_ref": property_ref,
+        # Stable per-property key: distinguishes a dealer's several matching
+        # shops in the frontend (React key, recommendation highlight) without
+        # depending on quote id, which is None for a never-quoted dealer.
+        "row_id": f'{dealer["id"]}:{property_ref or ""}',
+        "rank": None,  # assigned below
+        "quote": quote,
+        "round": call.get("round", 1),
+        # A quote row on the call is proof of a quote, so it outranks a
+        # stored outcome. Keeps the report right even for rows written
+        # before outcome derivation started trusting the quotes table.
+        "outcome": "quote" if quote else (call.get("outcome") or "failed"),
+        "call_number": call_number[call["id"]],
+        "citation_line": _citation_line(call.get("transcript_json"), quote),
+        "recording_url": _signed_recording(call),
+    }
+
+
 def build_report(spec_id: str) -> dict[str, Any]:
     config = load_vertical()
     currency = config.currency
@@ -92,32 +121,22 @@ def build_report(spec_id: str) -> dict[str, Any]:
         if not dealer_calls:
             continue  # never dialled: nothing to report, not a null-quote row
 
-        # The dealer's *final* position: the latest call that produced a quote,
-        # else the latest call at all (declined / callback / failed).
-        quoted = [c for c in dealer_calls if quotes_by_call.get(c["id"])]
-        call = (quoted or dealer_calls)[-1]
-        call_quotes = quotes_by_call.get(call["id"]) or []
-        # More than one quote on a call means the dealer revised mid-call; the
-        # last one logged is the one that stands.
-        quote = call_quotes[-1] if call_quotes else None
+        # One row per distinct property_ref (None = the dealer's single/only
+        # property). Calls are already sorted ascending, so a dict overwrite
+        # keeps the *latest* quote per property — a round-2 follow-up scoped
+        # to one shop can't blank out a sibling shop's earlier quote.
+        latest_by_prop: dict[str | None, tuple[dict[str, Any], dict[str, Any]]] = {}
+        for c in dealer_calls:
+            for q in quotes_by_call.get(c["id"], []):
+                latest_by_prop[q.get("property_ref")] = (c, q)
 
-        rows.append(
-            {
-                "dealer_id": dealer["id"],
-                "dealer_name": dealer["name"],
-                "persona": dealer["persona"],
-                "rank": None,  # assigned below
-                "quote": quote,
-                "round": call.get("round", 1),
-                # A quote row on the call is proof of a quote, so it outranks a
-                # stored outcome. Keeps the report right even for rows written
-                # before outcome derivation started trusting the quotes table.
-                "outcome": "quote" if quote else (call.get("outcome") or "failed"),
-                "call_number": call_number[call["id"]],
-                "citation_line": _citation_line(call.get("transcript_json"), quote),
-                "recording_url": _signed_recording(call),
-            }
-        )
+        if not latest_by_prop:
+            call = dealer_calls[-1]  # never quoted: one declined/failed row, as before
+            rows.append(_report_row(dealer, call, None, call_number))
+            continue
+
+        for call, quote in latest_by_prop.values():
+            rows.append(_report_row(dealer, call, quote, call_number))
 
     ranked = sorted(
         (r for r in rows if r["quote"]),
@@ -134,8 +153,14 @@ def build_report(spec_id: str) -> dict[str, Any]:
         "spec_id": spec_id,
         "rows": rows,
         "recommended_dealer_id": recommended["dealer_id"] if recommended else None,
+        "recommended_row_id": recommended["row_id"] if recommended else None,
         "recommendation_text": _recommendation_text(ranked, currency),
     }
+
+
+def _dealer_label(row: dict[str, Any]) -> str:
+    ref = row.get("property_ref")
+    return f'{row["dealer_name"]} (shop {ref})' if ref else row["dealer_name"]
 
 
 def _recommendation_text(ranked: list[dict[str, Any]], currency: str) -> str:
@@ -149,7 +174,7 @@ def _recommendation_text(ranked: list[dict[str, Any]], currency: str) -> str:
     quote = top["quote"]
     citation = f"[call {top['call_number']}, line {top['citation_line']}]"
     parts = [
-        f"{top['dealer_name']} offers the best verified deal at "
+        f"{_dealer_label(top)} offers the best verified deal at "
         f"{_money(quote['total_first_year'], currency)} for the first year {citation}.",
         f"That is {_money(quote.get('monthly_rent'), currency)} per month"
         + (
@@ -170,7 +195,7 @@ def _recommendation_text(ranked: list[dict[str, Any]], currency: str) -> str:
         saving = runner_up["quote"]["total_first_year"] - quote["total_first_year"]
         parts.append(
             f"It comes in {_money(saving, currency)} under the next clean offer from "
-            f"{runner_up['dealer_name']}."
+            f"{_dealer_label(runner_up)}."
         )
 
     cheaper_flagged = [
@@ -182,7 +207,7 @@ def _recommendation_text(ranked: list[dict[str, Any]], currency: str) -> str:
     for row in cheaper_flagged:
         reason = row["quote"].get("flag_reason") or "failed a red-flag check"
         parts.append(
-            f"{row['dealer_name']}'s headline number is lower at "
+            f"{_dealer_label(row)}'s headline number is lower at "
             f"{_money(row['quote']['total_first_year'], currency)}, but it is flagged — {reason} — "
             f"so it is ranked below the clean offers rather than recommended "
             f"[call {row['call_number']}, line {row['citation_line']}]."

@@ -7,7 +7,7 @@ import DealerCard from "@/components/calls/DealerCard";
 import CallStatusPanel from "@/components/calls/CallStatusPanel";
 import QuoteChip from "@/components/calls/QuoteChip";
 import { MOCK_DEALERS, MOCK_REPORT } from "@/lib/mocks";
-import { useCallCenter } from "@/lib/useCallCenter";
+import { MAX_ROUNDS, useCallCenter } from "@/lib/useCallCenter";
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
@@ -22,6 +22,7 @@ export default function CallCenterPage() {
     selected,
     select,
     call,
+    followUp,
     callAll,
     hangUp,
     setPersona,
@@ -135,18 +136,35 @@ export default function CallCenterPage() {
           <div className="flex-1 lg:sticky lg:top-8 lg:self-start">
             <CallStatusPanel
               dealer={selectedDealer}
-              callState={selectedDealer ? stateFor(selectedDealer.id) : { state: "idle", transcript: [] }}
+              callState={selectedDealer ? stateFor(selectedDealer.id) : { state: "idle", transcript: [], quotes: [] }}
               roleplay={selectedDealer ? !!roleplay[selectedDealer.id] : false}
               onRoleplaySessionEnded={() => selectedDealer && finishRoleplaySession(selectedDealer.id)}
               onHangUp={() => selectedDealer && hangUp(selectedDealer.id)}
               highlightLine={highlightLine}
             />
           </div>
-          {/* live quote panel — fills as soon as log_quote writes the row mid-call */}
-          <div className="lg:sticky lg:top-8 lg:w-[26%] lg:self-start">
+          {/* live quote panel(s) — fills as soon as log_quote writes a row mid-call.
+              A dealer with several matching properties gets one chip per quote. */}
+          <div className="flex flex-col gap-3 lg:sticky lg:top-8 lg:w-[26%] lg:self-start">
             {(() => {
               const s = selectedDealer ? stateFor(selectedDealer.id) : null;
-              if (s?.quote) return <QuoteChip quote={s.quote} live={s.state === "live"} />;
+              if (s && s.quotes.length > 0) {
+                const canFollowUp = s.state === "done" && (s.round ?? 1) < MAX_ROUNDS;
+                return s.quotes.map((q, i) => (
+                  <div key={q.id ?? i} className="flex flex-col gap-2">
+                    <QuoteChip quote={q} live={s.state === "live"} />
+                    {canFollowUp && (
+                      <Button
+                        variant="secondary"
+                        className="self-start px-3 py-1 text-xs"
+                        onClick={() => selectedDealer && followUp(selectedDealer.id, q.property_ref ?? "")}
+                      >
+                        Follow up{q.property_ref ? ` on ${q.property_ref}` : ""}
+                      </Button>
+                    )}
+                  </div>
+                ));
+              }
               return (
                 <div className="rounded-xl border border-dashed border-border-hover bg-surface p-5">
                   <p className="font-display text-sm font-semibold text-text">Quote</p>

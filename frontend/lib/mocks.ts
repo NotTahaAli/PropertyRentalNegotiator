@@ -114,18 +114,20 @@ export const MOCK_TRANSCRIPTS: Record<Dealer["persona"], TranscriptLine[]> = {
   ],
   upseller: [
     t(1, "negotiator", "Assalam-o-Alaikum, I'm enquiring about a 400 square foot ground-floor shop in Gulberg for a client."),
-    t(2, "dealer", "Good day! Excellent property available. Base rent 95,000 monthly."),
-    t(3, "negotiator", "What advance do you require on that?"),
+    t(2, "dealer", "Good day! I actually have two matching shops right now — Shop 2 and Shop 7. Shop 2's base rent is 95,000 monthly."),
+    t(3, "negotiator", "What advance do you require on Shop 2?"),
     t(4, "dealer", "Six months advance, 570,000. Prime location, this is normal."),
     t(5, "negotiator", "Six months is above the usual two to three. What about commission?"),
     t(6, "dealer", "One and a half month commission, 142,500. Standard practice."),
     t(7, "negotiator", "Monthly maintenance?"),
     t(8, "dealer", "12,000 monthly — security, cleaning, generator backup, all premium services."),
-    t(9, "negotiator", "And the annual increment?"),
+    t(9, "negotiator", "And the annual increment on Shop 2?"),
     t(10, "dealer", "Twelve percent yearly. Everyone charges this."),
     t(11, "negotiator", "Twelve is high; most agreements run five to ten. Would you cap it at eight if my client signs a three-year lease?"),
-    t(12, "dealer", "Hmm. For a serious three-year party... I can do ten percent, final."),
-    t(13, "negotiator", "Noted — 95,000 rent, 6 months advance, 142,500 commission, 12,000 maintenance, 10 percent increment. I'll log this quote."),
+    t(12, "dealer", "Hmm. For a serious three-year party on Shop 2... I can do ten percent, final."),
+    t(13, "negotiator", "Noted for Shop 2 — 95,000 rent, 6 months advance, 142,500 commission, 12,000 maintenance, 10 percent increment. Now what about Shop 7?"),
+    t(14, "dealer", "Shop 7 is smaller — base rent 80,000 monthly, same six months advance, so 480,000. Commission 120,000, maintenance 10,000, same ten percent increment for a three-year lease."),
+    t(15, "negotiator", "Understood. Logging both quotes: Shop 2 and Shop 7, each with the terms just given."),
   ],
   firm: [
     t(1, "negotiator", "Assalam-o-Alaikum, I'm calling on behalf of a client for a 400 square foot ground-floor shop in Gulberg."),
@@ -186,72 +188,109 @@ export const MOCK_OUTCOMES: Record<Dealer["persona"], CallOutcome> = {
 };
 
 // total_first_year = 12*rent + advance_months*rent + commission + 12*maintenance
-export const MOCK_QUOTES: Partial<Record<Dealer["persona"], Quote>> = {
-  lowballer: {
-    id: "quote_lowballer", call_id: "call_lowballer", dealer_id: "dealer_lowballer",
-    monthly_rent: 65000, advance_months: 2, commission: 32500, maintenance: 3000,
-    annual_increment_pct: 5, total_first_year: 998500, binding: false,
-    notes: "No written agreement offered; wants token money first.",
-    flagged: true,
-    flag_reason: "Quoted ~40% under benchmark with no written agreement offered — confirm scope before trusting this number.",
-  },
-  upseller: {
-    id: "quote_upseller", call_id: "call_upseller", dealer_id: "dealer_upseller",
-    monthly_rent: 95000, advance_months: 6, commission: 142500, maintenance: 12000,
-    annual_increment_pct: 10, total_first_year: 1996500, binding: false,
-    notes: "Advance 6 months; increment talked down from 12% to 10%.",
-  },
-  firm: {
-    id: "quote_firm", call_id: "call_firm", dealer_id: "dealer_firm",
-    monthly_rent: 110000, advance_months: 2, commission: 55000, maintenance: 5000,
-    annual_increment_pct: 5, total_first_year: 1655000, binding: true,
-    notes: "Written draft agreement offered; half commission waived for 3-year lease.",
-  },
+// A dealer may have multiple quotes (one per matching property, discriminated by
+// property_ref) — Upseller is the demo case, with two shops on the same call.
+export const MOCK_QUOTES: Partial<Record<Dealer["persona"], Quote[]>> = {
+  lowballer: [
+    {
+      id: "quote_lowballer", call_id: "call_lowballer", dealer_id: "dealer_lowballer",
+      monthly_rent: 65000, advance_months: 2, commission: 32500, maintenance: 3000,
+      annual_increment_pct: 5, total_first_year: 998500, binding: false,
+      notes: "No written agreement offered; wants token money first.",
+      flagged: true,
+      flag_reason: "Quoted ~40% under benchmark with no written agreement offered — confirm scope before trusting this number.",
+      property_ref: null,
+    },
+  ],
+  upseller: [
+    {
+      id: "quote_upseller_shop2", call_id: "call_upseller", dealer_id: "dealer_upseller",
+      monthly_rent: 95000, advance_months: 6, commission: 142500, maintenance: 12000,
+      annual_increment_pct: 10, total_first_year: 1996500, binding: false,
+      notes: "Advance 6 months; increment talked down from 12% to 10%.",
+      property_ref: "Shop 2",
+    },
+    {
+      id: "quote_upseller_shop7", call_id: "call_upseller", dealer_id: "dealer_upseller",
+      monthly_rent: 80000, advance_months: 6, commission: 120000, maintenance: 10000,
+      annual_increment_pct: 10, total_first_year: 1680000, binding: false,
+      notes: "Smaller unit; same advance/increment terms as Shop 2.",
+      property_ref: "Shop 7",
+    },
+  ],
+  firm: [
+    {
+      id: "quote_firm", call_id: "call_firm", dealer_id: "dealer_firm",
+      monthly_rent: 110000, advance_months: 2, commission: 55000, maintenance: 5000,
+      annual_increment_pct: 5, total_first_year: 1655000, binding: true,
+      notes: "Written draft agreement offered; half commission waived for 3-year lease.",
+      property_ref: null,
+    },
+  ],
 };
 
 // Round 2 quotes — only where the number actually changes (Firm-but-Fair,
-// the leverage concession). Lowballer/Upseller hold their round-1 quote
+// the leverage concession). Lowballer/Upseller hold their round-1 quote(s)
 // (nothing left to concede), so they aren't overridden here.
-export const MOCK_QUOTES_ROUND2: Partial<Record<Dealer["persona"], Quote>> = {
-  firm: {
-    id: "quote_firm_r2", call_id: "call_firm_r2", dealer_id: "dealer_firm",
-    monthly_rent: 100000, advance_months: 2, commission: 0, maintenance: 5000,
-    annual_increment_pct: 5, total_first_year: 1460000, binding: true,
-    notes: "Round 2: matched a documented 65,000 competing offer — rent trimmed 110k→100k, commission fully waived.",
-  },
+export const MOCK_QUOTES_ROUND2: Partial<Record<Dealer["persona"], Quote[]>> = {
+  firm: [
+    {
+      id: "quote_firm_r2", call_id: "call_firm_r2", dealer_id: "dealer_firm",
+      monthly_rent: 100000, advance_months: 2, commission: 0, maintenance: 5000,
+      annual_increment_pct: 5, total_first_year: 1460000, binding: true,
+      notes: "Round 2: matched a documented 65,000 competing offer — rent trimmed 110k→100k, commission fully waived.",
+      property_ref: null,
+    },
+  ],
 };
 
-// ── K10 Report mock — final-round-per-dealer snapshot of the 2-round demo.
-// call_number = MOCK_DEALERS index+1 (stonewaller=1, lowballer=2, upseller=3,
-// firm=4); citation_line points into MOCK_TRANSCRIPTS_ROUND2 for the dealers
-// that reached round 2. Stonewaller never gets a round-2 callback — a dealer
-// who already said the unit is rented doesn't get redialed — so its final
-// round is 1, per the round-1 decline transcript.
+// ── K10 Report mock — final-round-per-dealer(-property) snapshot of the
+// 2-round demo. call_number = MOCK_DEALERS index+1 (stonewaller=1, lowballer=2,
+// upseller=3, firm=4); citation_line points into MOCK_TRANSCRIPTS_ROUND2 for the
+// dealers that reached round 2. Stonewaller never gets a round-2 callback — a
+// dealer who already said the unit is rented doesn't get redialed — so its
+// final round is 1, per the round-1 decline transcript. Upseller quoted two
+// shops on the same call, so it contributes two ranked rows, same as the
+// backend's per-property grouping would.
+const upsellerShop2 = MOCK_QUOTES.upseller?.[0] ?? null;
+const upsellerShop7 = MOCK_QUOTES.upseller?.[1] ?? null;
+
 export const MOCK_REPORT: Report = {
   spec_id: "spec_mock_001",
   rows: [
     {
       dealer_id: "dealer_firm", dealer_name: "Firm Dealer", persona: "firm",
-      rank: 1, quote: MOCK_QUOTES_ROUND2.firm ?? null, round: 2, outcome: "quote",
+      property_ref: null, row_id: "dealer_firm:",
+      rank: 1, quote: MOCK_QUOTES_ROUND2.firm?.[0] ?? null, round: 2, outcome: "quote",
       call_number: 4, citation_line: 4, recording_url: mockRecordingUrl(),
     },
     {
       dealer_id: "dealer_upseller", dealer_name: "Upseller Dealer", persona: "upseller",
-      rank: 2, quote: MOCK_QUOTES.upseller ?? null, round: 2, outcome: "quote",
-      call_number: 3, citation_line: 1, recording_url: mockRecordingUrl(),
+      property_ref: "Shop 7", row_id: "dealer_upseller:Shop 7",
+      rank: 2, quote: upsellerShop7, round: 2, outcome: "quote",
+      call_number: 3, citation_line: 14, recording_url: mockRecordingUrl(),
+    },
+    {
+      dealer_id: "dealer_upseller", dealer_name: "Upseller Dealer", persona: "upseller",
+      property_ref: "Shop 2", row_id: "dealer_upseller:Shop 2",
+      rank: 3, quote: upsellerShop2, round: 2, outcome: "quote",
+      call_number: 3, citation_line: 2, recording_url: mockRecordingUrl(),
     },
     {
       dealer_id: "dealer_lowballer", dealer_name: "Lowballer Dealer", persona: "lowballer",
-      rank: 3, quote: MOCK_QUOTES.lowballer ?? null, round: 2, outcome: "quote",
+      property_ref: null, row_id: "dealer_lowballer:",
+      rank: 4, quote: MOCK_QUOTES.lowballer?.[0] ?? null, round: 2, outcome: "quote",
       call_number: 2, citation_line: 1, recording_url: mockRecordingUrl(),
     },
     {
       dealer_id: "dealer_stonewaller", dealer_name: "Stonewaller Dealer", persona: "stonewaller",
+      property_ref: null, row_id: "dealer_stonewaller:",
       rank: null, quote: null, round: 1, outcome: "declined",
       call_number: 1, citation_line: 1, recording_url: mockRecordingUrl(),
     },
   ],
   recommended_dealer_id: "dealer_firm",
+  recommended_row_id: "dealer_firm:",
   recommendation_text:
     "Firm-but-Fair offers the best verified deal at PKR 1,460,000 for the first year. " +
     "On the first call it quoted a fair, fully itemised 110,000/month with standard terms. " +
@@ -304,7 +343,10 @@ export const MOCK_SPEC_FIXTURES: { item: SpecListItem; dealers: Dealer[]; calls:
       spec: { location: MOCK_SPEC.location, business_type: MOCK_SPEC.business_type },
     },
     dealers: MOCK_DEALERS.filter((d) => d.persona !== "human"),
-    calls: MOCK_REPORT.rows.map((r) => ({
+    // A dealer can contribute more than one report row (multiple properties)
+    // but they share one underlying call — dedupe by dealer_id so the call
+    // list doesn't produce two rows with the same id.
+    calls: [...new Map(MOCK_REPORT.rows.map((r) => [r.dealer_id, r])).values()].map((r) => ({
       id: `call_${r.dealer_id}`,
       spec_id: MOCK_REPORT.spec_id,
       dealer_id: r.dealer_id,

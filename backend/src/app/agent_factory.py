@@ -74,6 +74,12 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
             **fee_properties,
             "call_id": {"type": "string", "description": "Current call id."},
             "dealer_id": {"type": "string", "description": "Current dealer id."},
+            "property_ref": {
+                "type": "string",
+                "description": "Identifier of the specific shop/unit this quote is for (e.g. "
+                "'Shop 4, Ground Floor'). Pass the same value on every log_quote update for that "
+                "shop. Omit entirely if the dealer has only one matching property.",
+            },
             "binding": {"type": "boolean", "description": "Whether the dealer can produce a written quote. Send true as soon as they confirm it."},
             "notes": {"type": "string", "description": "Any other relevant detail about the quote or the property."},
         },
@@ -102,7 +108,8 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
 
     get_leverage = _webhook_tool(
         "get_leverage",
-        "Returns the best real quotes logged so far for this spec. Empty if none exist yet.",
+        "Returns the best real quotes logged so far for this spec, each tagged with the "
+        "property it's for. Empty if none exist yet.",
         {
             "spec_id": {"type": "string", "description": "Current client spec id."},
             "dealer_id": {"type": "string", "description": "Current dealer id (their own quotes are excluded)."},

@@ -470,7 +470,34 @@ def test_start_call_roleplay_returns_agent_and_dynamic_variables_with_no_bid_dat
     assert dyn["dealer_id"] == "d1"
     assert dyn["spec_id"] == "s1"
     assert "bid" not in json.dumps(dyn).lower()
+    assert dyn["focus_property"] == ""
     assert spawned == []
+
+
+def test_start_call_roleplay_with_focus_property_ref_passed_through(monkeypatch):
+    monkeypatch.setattr(
+        crud,
+        "get_spec",
+        lambda id: {"id": "s1", "user_id": USER_A, "spec_json": {"area_sqft": 500}},
+    )
+    monkeypatch.setattr(
+        crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1", "persona": "firm"}
+    )
+    monkeypatch.setattr(crud, "create_call", lambda row: {"id": "call-3", **row})
+    _as(USER_A)
+
+    response = client.post(
+        "/calls/start",
+        json={
+            "spec_id": "s1",
+            "dealer_id": "d1",
+            "mode": "roleplay",
+            "focus_property_ref": "Shop 4",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["dynamic_variables"]["focus_property"] == "Shop 4"
 
 
 WEBHOOK_SECRET = "test-webhook-secret"
