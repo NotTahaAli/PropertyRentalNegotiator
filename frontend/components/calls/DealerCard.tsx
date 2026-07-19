@@ -1,14 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import Button from "@/components/ui/Button";
 import StateBadge from "./StateBadge";
+import TranscriptStream from "./TranscriptStream";
 import { PERSONA_HINTS } from "@/lib/mocks";
-import { OUTCOME_COPY, PERSONAS, type Dealer, type DealerStatus, type Persona } from "@/lib/types";
+import { OUTCOME_COPY, PERSONAS, type CallRow, type Dealer, type DealerStatus, type Persona } from "@/lib/types";
 import type { DealerCallState } from "@/lib/useCallCenter";
 
 interface DealerCardProps {
   dealer: Dealer;
   callState: DealerCallState;
+  history: CallRow[];
   selected: boolean;
   roleplay: boolean;
   onSelect: () => void;
@@ -16,11 +19,16 @@ interface DealerCardProps {
   onPersonaChange: (persona: Persona) => void;
   onRoleplayChange: (on: boolean) => void;
   onStatusChange: (status: DealerStatus) => void;
+  // Deep-linked from a report citation: expand this round's transcript and
+  // scroll/highlight the cited line.
+  autoExpandCallId?: string;
+  highlightLine?: number;
 }
 
 export default function DealerCard({
   dealer,
   callState,
+  history,
   selected,
   roleplay,
   onSelect,
@@ -28,6 +36,8 @@ export default function DealerCard({
   onPersonaChange,
   onRoleplayChange,
   onStatusChange,
+  autoExpandCallId,
+  highlightLine,
 }: DealerCardProps) {
   const { state, outcome, quotes } = callState;
   const busy = state === "calling" || state === "live";
@@ -35,6 +45,14 @@ export default function DealerCard({
   // Roleplay doesn't need one: a human is on the line either way.
   const noBridgeAgent = !roleplay && dealer.persona === "human";
   const declined = dealer.status === "declined";
+  const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
+  // React's sanctioned prev-state pattern (see CallStatusPanel's linesCallId):
+  // sync expandedCallId to a new deep-linked call during render, not an effect.
+  const [syncedAutoExpand, setSyncedAutoExpand] = useState(autoExpandCallId);
+  if (autoExpandCallId !== syncedAutoExpand) {
+    setSyncedAutoExpand(autoExpandCallId);
+    if (autoExpandCallId) setExpandedCallId(autoExpandCallId);
+  }
 
   return (
     <div
@@ -111,6 +129,48 @@ export default function DealerCard({
       )}
       {state === "failed" && callState.error && (
         <p className="mt-2 text-xs text-error">{callState.error}</p>
+      )}
+
+      {/* every past call to this dealer, all rounds — client can read any of them */}
+      {history.length > 0 && (
+        <div className="mt-3 border-t border-border pt-2" onClick={(e) => e.stopPropagation()}>
+          <p className="font-mono text-[10px] uppercase tracking-wide text-text-dim">
+            Call history
+          </p>
+          <div className="mt-1.5 flex flex-col gap-1">
+            {history.map((c) => (
+              <div key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedCallId(expandedCallId === c.id ? null : c.id)}
+                  className="flex w-full items-center justify-between gap-2 rounded px-1.5 py-1 text-left text-[11px] text-text-secondary hover:bg-elevated"
+                >
+                  <span>
+                    Round {c.round}
+                    {c.status === "failed"
+                      ? " — failed"
+                      : c.outcome
+                        ? ` — ${OUTCOME_COPY[c.outcome].label}`
+                        : c.status === "running"
+                          ? " — in progress"
+                          : ""}
+                  </span>
+                  <span className="font-mono text-text-dim">
+                    {c.started_at ? new Date(c.started_at).toLocaleString() : ""}
+                  </span>
+                </button>
+                {expandedCallId === c.id && (
+                  <div className="mt-1 rounded-lg border border-border bg-elevated p-2">
+                    <TranscriptStream
+                      lines={c.transcript_json ?? []}
+                      highlightLine={autoExpandCallId === c.id ? highlightLine : undefined}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="mt-3 flex items-center justify-between gap-3">

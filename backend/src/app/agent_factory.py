@@ -107,20 +107,23 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
             "property_ref": {
                 "type": "string",
                 "description": "Identifier of the specific shop/unit this quote is for (e.g. "
-                "'Shop 4, Ground Floor'). Pass the same value on every log_quote update for that "
-                "shop. Omit entirely if the dealer has only one matching property.",
+                "'Shop 4, Ground Floor'). Ask the dealer to identify the property before logging "
+                "any quote, even if they only have one matching property — pass the same value on "
+                "every log_quote update for that shop.",
             },
             "binding": {"type": "boolean", "description": "Whether the dealer can produce a written quote. Send true as soon as they confirm it."},
             "notes": {"type": "string", "description": "Any other relevant detail about the quote or the property."},
         },
         # Partial quotes allowed: only the ids (plus monthly_rent, which QuoteCreate
-        # hard-requires) are schema-required. binding stays optional — while it's
-        # unconfirmed the quote carries the no_written_quote flag and get_leverage
-        # excludes it, so a partial quote can't leak into leverage early.
+        # hard-requires, and property_ref) are schema-required. binding stays
+        # optional — while it's unconfirmed the quote carries the no_written_quote
+        # flag and get_leverage excludes it, so a partial quote can't leak into
+        # leverage early.
         required=[
             *(["monthly_rent"] if "monthly_rent" in config.fee_taxonomy else []),
             "call_id",
             "dealer_id",
+            "property_ref",
         ],
     )
 
@@ -138,8 +141,11 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
 
     get_leverage = _webhook_tool(
         "get_leverage",
-        "Returns the best real quotes logged so far for this spec, each tagged with the "
-        "property it's for. Empty if none exist yet.",
+        "Returns your full current leverage picture for this spec: every quote logged so far, "
+        "each tagged with the property it's for, whether it is this dealer's own prior quote "
+        "(is_current_dealer) and whether it was flagged as unreliable (flagged). Call it during "
+        "the negotiation — not just once — and actively cite the cheapest quote that is NOT "
+        "your own to press this dealer for a better deal. Empty if none exist yet.",
         {
             "spec_id": _id_property("spec_id"),
             "dealer_id": _id_property("dealer_id"),

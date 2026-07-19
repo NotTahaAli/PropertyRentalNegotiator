@@ -7,36 +7,13 @@ an item; delete resolved items instead of checking them off.
 
 ## Pending: this session's config/schema changes need to be deployed
 
-- **Supabase migration push** — `20260719090212_dealer_status.sql` adds
-  `dealers.status` (default `'active'`, check `active|declined`). Run
-  `supabase db push` against the linked project before the decline/reactivate
-  UI or the `start_call` 422-on-declined check can work against real data.
-  Also pending: `20260719120000_call_status_detail.sql` (`calls.callback_at`,
-  `calls.callback_note`, both nullable text) — needed before `log_call_status`
-  can write callback detail against real data.
-- **`make_agents` re-run** — `vertical.json` prompts changed (no-narration
-  rule on negotiator + estimator, "written quote not agreement" language,
-  stronger vague-answer probing, wording-variety instructions) and all 4
-  persona `AgentDef`s now carry `end_call=True` (`agent_factory.py`). None of
-  this reaches live ElevenLabs agents until `uv run python -m app.make_agents`
-  is re-run with live keys. **This session added a 5th webhook tool
-  (`log_call_status`) and rebound every id param on all 5 tools
-  (`call_id`/`dealer_id`/`spec_id`) from LLM-typed strings to
-  `dynamic_variable`-bound values** (see CLAUDE.md K3/K4) — until
-  `make_agents` re-runs, the live negotiator agent still has the old tool
-  schemas and log_quote's original unreliable-id-typing behavior is
-  unchanged in production. This is the fix for the exact live symptom that
-  triggered this work: a call where the dealer stated a full itemised quote
-  verbally but it never reached the `quotes` table, so the UI showed
-  "Dealer asked for a callback — no numbers committed" despite real numbers
-  being spoken. High priority re-run.
-- **Live-verify `log_call_status`** — new tool, unit-tested only
-  (`test_tools.py`, `test_bridge.py::test_set_call_outcome_*`). Needs one real
-  negotiator call per terminal outcome (`final_quote`, `vague_quote`,
-  `callback` with a real `callback_at`, `declined`) to confirm the live LLM
-  actually calls it with a valid `outcome` value and that `bridge.finalize_call`
-  correctly leaves it alone rather than overwriting it with the
-  `derive_outcome` fallback guess.
+- **Live-verify `log_call_status` per-outcome** — general reliability
+  confirmed 2026-07-19 (one real bridge call, `log_call_status` fired and
+  logged a valid quote), but that was only one outcome. Still needs one real
+  call each for `final_quote`, `vague_quote`, `callback` (with a real
+  `callback_at`), and `declined` to confirm `bridge.finalize_call` leaves an
+  explicit outcome alone rather than overwriting it with the blunter
+  `derive_outcome` guess.
 - **Live-verify persona anchor figures** — `api._dealer_dynamic_variables`
   computes randomized per-call `{{asking_rent}}`/`{{advance_months}}`/etc. and
   `run_bridge` now passes them as the dealer leg's `dynamic_variables`; unit
@@ -54,23 +31,16 @@ an item; delete resolved items instead of checking them off.
 
 ## Blocked: frontend K8 → backend wiring
 
-- **Role-play widget embed in DealerCard** — the "Answer as dealer" toggle
-  on `/calls/[spec_id]` renders a placeholder only. Backend roleplay mode
-  (`POST /calls/start` with `mode: "roleplay"`) already returns
-  `negotiator_agent_id` + `dynamic_variables`; the frontend never consumes
-  them. Wire the same `@elevenlabs/react` `ConversationProvider` +
-  `useConversation` pattern K8's `VoiceIntake.tsx` proved, passing the
-  dynamic variables at session start. This is the K5-fallback demo path —
-  the demo must never depend on the bridge working, so this gap still
-  matters even now that the bridge persona-reply bug is fixed.
-
-- **Post-call webhook: live delivery unverified** — backend endpoint
-  `POST /webhooks/post-call` is built and HMAC-verified;
-  `ELEVENLABS_WEBHOOK_SECRET` is now set locally (presence-checked
-  2026-07-19) and the dashboard webhook exists. Still to confirm: the same
-  secret is set on Render, and one real agent call actually lands a signed
-  event at `https://negotiator-backend.onrender.com/webhooks/post-call`
-  (transcript + outcome written to the `calls` row).
+- **Post-call webhook: live delivery unverified for roleplay calls** —
+  backend endpoint `POST /webhooks/post-call` is built and HMAC-verified;
+  `ELEVENLABS_WEBHOOK_SECRET` is set locally and on Render, dashboard webhook
+  exists. 2026-07-19 bridge-mode call live-verified `log_call_status` and
+  quote logging, but bridge writes transcript/outcome itself
+  (`bridge.finalize_call`) and never needs this webhook — it stays unverified
+  until a **roleplay** call is tested (human answers as dealer via
+  `RoleplaySession.tsx`), since that path has no bridge and depends entirely
+  on the webhook to land transcript + outcome on the `calls` row. User plans
+  to test roleplay next.
 
 ## Resolved: make_agents re-run (dealer-first flip + negotiator end_call)
 
@@ -81,6 +51,19 @@ an item; delete resolved items instead of checking them off.
   bridge call re-check pending to confirm the negotiator actually hangs up.
 
 ## Open: manual click-throughs
+
+- **Call history + citation deep-link real-mode check** — `DealerCard`'s new
+  "Call history" list and the fixed `[call N, line M]` citation resolution
+  (`useCallCenter.history`/`resolveCallNumber`, `frontend/app/calls/[spec_id]/
+  page.tsx`) are typecheck/lint/build-clean but never exercised against a real
+  login session + real Supabase call rows (`/calls` route is auth-guarded, so
+  a mock-mode click-through can't reach it — mock mode also never populates
+  `history` at all, since it's wired to `GET /calls?spec_id=`, not the mock
+  data path). Needs: log in, run a dealer through 2+ rounds, confirm every
+  round appears in "Call history" and expands to the right transcript, then
+  click a report citation for an older round and confirm it lands on the
+  right dealer + line instead of doing nothing (today's real-mode behavior
+  before this fix).
 
 - **Report page real-mode check** — `GET /report/{spec_id}` now exists and the
   page calls it for real, but it has only ever rendered `MOCK_REPORT` in a
@@ -132,20 +115,39 @@ an item; delete resolved items instead of checking them off.
   quotes missing the fee fields in `get_leverage`/report ranking. Deliberately
   not done yet: it lands in `tools.py`, which is being actively edited.
 
-## MUST DO BEFORE THE NEXT LIVE CALL
+## Open: get_leverage proactive citation still unconfirmed
 
-- **Re-run `uv run python -m app.make_agents` with live keys.** The call-history
-  work changed *prompts*, and prompts only reach the agents through the factory.
-  The negotiator prompt gained a `CALL HISTORY WITH THIS DEALER` block
-  (`{{round_number}}`, `{{prior_call_summary}}`) and all four persona prompts
-  gained `{{prior_call_note}}`. Until this is re-run, the backend will send the
-  new dynamic variables and the deployed agents will ignore them — the feature
-  will look broken while the code is correct.
-- **Confirm Render actually redeployed.** Same trap: a fix that is on `main` but
-  not deployed behaves exactly like a fix that doesn't work.
+- The 2026-07-19 `make_agents` re-run pushed `get_leverage`'s new tagged
+  shape and `log_quote`'s required `property_ref` live, and the same day's
+  bridge call logging a valid quote is decent evidence the negotiator asked
+  for a property identifier (a required tool-schema field it couldn't have
+  skipped). Not yet confirmed: the negotiator actually **citing** a cheap
+  `is_current_dealer: false` competitor quote mid-negotiation — that needs a
+  spec with an existing competitor quote already logged before the call
+  starts, which the single test call didn't have.
+- **Confirm Render actually redeployed** once this branch is pushed/merged —
+  `make_agents` only pushes agent/tool *config* to ElevenLabs; the FastAPI
+  webhook backend itself (this branch's `tools.py` `get_leverage` reshape,
+  required `property_ref`) still needs Render to actually serve it, or the
+  live agent will ask for things the deployed backend doesn't return yet.
 
 ## Resolved
 
+- **2026-07-19 deploy round** — Supabase migrations pushed (`dealers.status`,
+  `calls.callback_at`/`callback_note`) and confirmed up to date; `make_agents`
+  re-run live, carrying this session's `get_leverage` reshape, required
+  `property_ref`, the 5th webhook tool (`log_call_status`), and the
+  dynamic-variable id-binding fix out to the live ElevenLabs agents. One real
+  bridge call confirmed `log_call_status` fires and logs a valid quote —
+  general tool-call reliability live-verified, though not yet per-outcome
+  (see above) or for `get_leverage`'s competitor-citation behavior.
+- **Role-play widget embed** — turned out already done, not a placeholder;
+  this TODO item was stale. `RoleplaySession.tsx` is fully wired to
+  `@elevenlabs/react` (`ConversationProvider` + `useConversation`, same
+  pattern as K8's `VoiceIntake.tsx`), consuming the `negotiator_agent_id` +
+  `dynamic_variables` that `POST /calls/start` (`mode: "roleplay"`) returns.
+  Only shows a "voice available when wired" placeholder under `USE_MOCKS` or
+  a missing agent id — both deliberate fallbacks, not stub states.
 - **Follow-up calls had no memory of the dealer** — two separate faults, both
   fixed together because fixing either alone looks worse than fixing neither.
   (1) The negotiator received no prior-call context, so it reopened every

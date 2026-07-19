@@ -185,6 +185,9 @@ class LeverageRequest(BaseModel):
     dealer_id: str
 
 
+LEVERAGE_COMPETITOR_CAP = 5
+
+
 @tools_router.post("/get_leverage")
 def get_leverage(body: LeverageRequest) -> dict[str, Any]:
     _get_or_404(crud.get_spec(body.spec_id))
@@ -194,9 +197,17 @@ def get_leverage(body: LeverageRequest) -> dict[str, Any]:
         for call in crud.list_calls(spec_id=body.spec_id)
         # ponytail: N+1 over ~4-8 calls, fine at demo scale
         for q in crud.list_quotes(call_id=call["id"])
-        if not q["flagged"] and q["dealer_id"] != body.dealer_id
     ]
-    best = sorted(quotes, key=lambda q: q["total_first_year"])[:3]
+    own = [q for q in quotes if q["dealer_id"] == body.dealer_id]
+    # Own quotes are context, not leverage — always included, never capped.
+    # Competitors are ranked cheapest-first and capped so the prompt stays
+    # bounded; flagged competitor quotes stay in the pool (tagged) rather
+    # than dropped, so the agent can judge reliability itself.
+    competitors = sorted(
+        (q for q in quotes if q["dealer_id"] != body.dealer_id),
+        key=lambda q: q["total_first_year"],
+    )[:LEVERAGE_COMPETITOR_CAP]
+    selected = own + competitors
     return {
         "quotes": [
             {
@@ -207,8 +218,10 @@ def get_leverage(body: LeverageRequest) -> dict[str, Any]:
                 "commission": q["commission"],
                 "maintenance": q["maintenance"],
                 "total_first_year": q["total_first_year"],
+                "is_current_dealer": q["dealer_id"] == body.dealer_id,
+                "flagged": q["flagged"],
             }
-            for q in best
+            for q in selected
         ]
     }
 

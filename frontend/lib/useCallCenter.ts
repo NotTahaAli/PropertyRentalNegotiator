@@ -44,6 +44,14 @@ export function useCallCenter(specId: string) {
   const [calls, setCalls] = useState<Record<string, DealerCallState>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [roleplay, setRoleplayMap] = useState<Record<string, boolean>>({});
+  // Every call ever made for this spec, all dealers/rounds — unlike `calls`
+  // above (which only ever tracks each dealer's current/latest round), this
+  // is never overwritten, so older rounds stay browsable.
+  const [history, setHistory] = useState<Record<string, CallRow[]>>({});
+  // Same rows, ordered exactly like the backend's report citation numbering
+  // (report._call_sort_key: started_at then id, ascending) so `[call N, ...]`
+  // citations can be resolved back to a dealer + call in real mode.
+  const [numberedCalls, setNumberedCalls] = useState<CallRow[]>([]);
   const timers = useRef<Record<string, ReturnType<typeof setInterval>[]>>({});
 
   useEffect(() => {
@@ -235,6 +243,20 @@ export function useCallCenter(specId: string) {
         const prev = latestByDealer.get(c.dealer_id);
         if (!prev || c.round >= prev.round) latestByDealer.set(c.dealer_id, c);
       }
+      const byDealer: Record<string, CallRow[]> = {};
+      for (const c of rows) {
+        (byDealer[c.dealer_id] ??= []).push(c);
+      }
+      for (const list of Object.values(byDealer)) list.sort((a, b) => a.round - b.round);
+      setHistory(byDealer);
+      // report.py's _call_sort_key: (started_at ?? "", id), ascending — must
+      // match exactly or a citation resolves to the wrong call.
+      setNumberedCalls(
+        [...rows].sort((a, b) => {
+          const started = (a.started_at ?? "").localeCompare(b.started_at ?? "");
+          return started !== 0 ? started : a.id.localeCompare(b.id);
+        })
+      );
       for (const dealer of dealers) {
         const c = latestByDealer.get(dealer.id);
         if (!c) continue;
@@ -455,6 +477,11 @@ export function useCallCenter(specId: string) {
     []
   );
 
+  const resolveCallNumber = useCallback(
+    (n: number): CallRow | undefined => numberedCalls[n - 1],
+    [numberedCalls]
+  );
+
   const callAll = useCallback(() => {
     dealers?.forEach((d) => {
       if (d.status === "declined") return;
@@ -484,5 +511,7 @@ export function useCallCenter(specId: string) {
     finishRoleplaySession,
     seedMockCompleted,
     stateFor: (dealerId: string): DealerCallState => calls[dealerId] ?? IDLE,
+    historyFor: (dealerId: string): CallRow[] => history[dealerId] ?? [],
+    resolveCallNumber,
   };
 }
