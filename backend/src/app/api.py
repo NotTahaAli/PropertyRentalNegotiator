@@ -152,6 +152,35 @@ def list_specs(user_id: str = Depends(get_current_user_id)) -> list[dict[str, An
     return crud.list_specs(user_id=user_id)
 
 
+@specs_router.post("/{id}/reflag")
+def reflag_spec(id: str, user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
+    """Re-run red-flag rules on every quote of a spec against the current benchmark.
+
+    May unflag: the fresh verdict always wins (quotes judged on a fallback or by a
+    client-supplied flagged value get corrected here).
+    """
+    from .tools import evaluate_red_flags  # local: tools.py imports from this module
+
+    spec = _require_spec_owner(id, user_id)
+    checked = updated = 0
+    # ponytail: N+1 over ~4-8 calls, same scale as get_leverage, fine for demo
+    for call in crud.list_calls(spec_id=id):
+        for quote in crud.list_quotes(call_id=call["id"]):
+            checked += 1
+            verdict = evaluate_red_flags(
+                spec,
+                monthly_rent=quote.get("monthly_rent"),
+                advance_months=quote.get("advance_months"),
+                binding=quote.get("binding"),
+            )
+            flagged = verdict["action"] != "clear"
+            reason = "; ".join(verdict["reasons"]) or None
+            if flagged != quote.get("flagged") or reason != quote.get("flag_reason"):
+                crud.update_quote(quote["id"], {"flagged": flagged, "flag_reason": reason})
+                updated += 1
+    return {"checked": checked, "updated": updated}
+
+
 @dealers_router.post("")
 def create_dealer(
     body: DealerCreate, user_id: str = Depends(get_current_user_id)

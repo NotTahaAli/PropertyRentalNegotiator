@@ -705,6 +705,140 @@ def test_patch_dealer_404s_for_non_owner(monkeypatch):
     assert response.status_code == 404
 
 
+# --- POST /specs/{id}/reflag (K11) ---------------------------------------
+
+REFLAG_SPEC = {
+    "id": "s1",
+    "user_id": USER_A,
+    "spec_json": {"area_sqft": 900},
+    "benchmark_json": {"per_sqft_low": 200, "per_sqft_high": 400},
+}
+
+
+def _reflag_fixture(monkeypatch, quote, spec=REFLAG_SPEC):
+    monkeypatch.setattr(crud, "get_spec", lambda id: spec)
+    monkeypatch.setattr(crud, "list_calls", lambda **f: [{"id": "c1", "spec_id": "s1"}])
+    monkeypatch.setattr(crud, "list_quotes", lambda **f: [quote])
+    updates = []
+
+    def fake_update_quote(id, fields):
+        updates.append((id, fields))
+        return {"id": id, **fields}
+
+    monkeypatch.setattr(crud, "update_quote", fake_update_quote)
+    return updates
+
+
+def test_reflag_requires_auth():
+    response = client.post("/specs/s1/reflag")
+
+    assert response.status_code == 401
+
+
+def test_reflag_404s_for_non_owner(monkeypatch):
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    _as(USER_B)
+
+    response = client.post("/specs/s1/reflag")
+
+    assert response.status_code == 404
+
+
+def test_reflag_flags_newly_bad_quote(monkeypatch):
+    # monthly_low = 200 * 900 = 180000; 30% below = 126000 threshold
+    updates = _reflag_fixture(
+        monkeypatch,
+        {
+            "id": "q1",
+            "monthly_rent": 100000,
+            "advance_months": 2,
+            "binding": True,
+            "flagged": False,
+            "flag_reason": None,
+        },
+    )
+    _as(USER_A)
+
+    response = client.post("/specs/s1/reflag")
+
+    assert response.status_code == 200
+    assert response.json() == {"checked": 1, "updated": 1}
+    assert len(updates) == 1
+    quote_id, fields = updates[0]
+    assert quote_id == "q1"
+    assert fields["flagged"] is True
+    assert "below" in fields["flag_reason"]
+
+
+def test_reflag_unflags_cleared_quote(monkeypatch):
+    updates = _reflag_fixture(
+        monkeypatch,
+        {
+            "id": "q1",
+            "monthly_rent": 200000,
+            "advance_months": 3,
+            "binding": True,
+            "flagged": True,
+            "flag_reason": "stale reason",
+        },
+    )
+    _as(USER_A)
+
+    response = client.post("/specs/s1/reflag")
+
+    assert response.status_code == 200
+    assert response.json() == {"checked": 1, "updated": 1}
+    assert updates == [("q1", {"flagged": False, "flag_reason": None})]
+
+
+def test_reflag_skips_unchanged_quotes(monkeypatch):
+    _reflag_fixture(
+        monkeypatch,
+        {
+            "id": "q1",
+            "monthly_rent": 200000,
+            "advance_months": 3,
+            "binding": True,
+            "flagged": False,
+            "flag_reason": None,
+        },
+    )
+    monkeypatch.setattr(
+        crud, "update_quote", lambda *a: pytest.fail("wrote unchanged quote")
+    )
+    _as(USER_A)
+
+    response = client.post("/specs/s1/reflag")
+
+    assert response.status_code == 200
+    assert response.json() == {"checked": 1, "updated": 0}
+
+
+def test_reflag_none_fields_and_no_benchmark(monkeypatch):
+    # fallback benchmark path + None advance/binding: no_written_quote fires
+    updates = _reflag_fixture(
+        monkeypatch,
+        {
+            "id": "q1",
+            "monthly_rent": 200000,
+            "advance_months": None,
+            "binding": None,
+            "flagged": False,
+            "flag_reason": None,
+        },
+        spec={"id": "s1", "user_id": USER_A, "spec_json": {"area_sqft": 900}, "benchmark_json": None},
+    )
+    _as(USER_A)
+
+    response = client.post("/specs/s1/reflag")
+
+    assert response.status_code == 200
+    assert response.json() == {"checked": 1, "updated": 1}
+    _, fields = updates[0]
+    assert fields["flagged"] is True
+    assert "written quote" in fields["flag_reason"]
+
+
 def test_recording_endpoint_owner_only(monkeypatch):
     monkeypatch.setattr(
         crud, "get_call", lambda id: {"id": "c1", "spec_id": "s1", "recording_url": "c1.wav"}

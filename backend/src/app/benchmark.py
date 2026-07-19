@@ -106,18 +106,24 @@ def discover_dealers(location: str, limit: int = 4) -> list[dict]:
             results,
             "Extract real property dealer / estate agency business names mentioned in "
             f"these search snippets for {location}. Include a website URL only when a "
-            "snippet clearly ties it to that business. Skip portals, listicles, and "
-            "generic sites. Never invent names.",
+            "snippet clearly ties it to that business. Skip property portals and "
+            "marketplaces (Zameen, OLX, Graana), business directories, news articles, "
+            "listicles, and generic sites. List each business once. Never invent names.",
             _Dealers,
         )
     except Exception:
         return []
+    unique: dict[str, _Dealer] = {}
+    for d in parsed.dealers:
+        key = d.name.strip().casefold()
+        if key and key not in unique:
+            unique[key] = d
     return [
         {
-            "name": d.name,
+            "name": d.name.strip(),
             "persona": "human",
             "phone_label": d.url or location,
             "source": "tavily",
         }
-        for d in parsed.dealers[:limit]
+        for d in list(unique.values())[:limit]
     ]

@@ -68,3 +68,11 @@ def test_update_call_patches_row_by_id(monkeypatch):
     updated = crud.update_call("c1", {"status": "completed", "outcome": "quote"})
 
     assert updated == {"id": "new-id", "status": "completed", "outcome": "quote"}
+
+
+def test_update_quote_patches_row_by_id(monkeypatch):
+    monkeypatch.setattr(crud, "get_client", lambda: FakeClient())
+
+    updated = crud.update_quote("q1", {"flagged": True, "flag_reason": "below market"})
+
+    assert updated == {"id": "new-id", "flagged": True, "flag_reason": "below market"}

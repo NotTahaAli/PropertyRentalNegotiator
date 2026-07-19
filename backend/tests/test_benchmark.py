@@ -180,3 +180,39 @@ def test_discover_dealers_tavily_error_returns_empty(monkeypatch):
     monkeypatch.setattr(benchmark.httpx, "post", post)
 
     assert benchmark.discover_dealers("Gulberg Lahore") == []
+
+
+def test_discover_dealers_dedups_names_case_insensitive(monkeypatch):
+    monkeypatch.setattr(benchmark.httpx, "post", _fake_httpx_post())
+    monkeypatch.setattr(
+        benchmark,
+        "_client",
+        lambda: _fake_openai(
+            _dealers_parsed(
+                [
+                    ("Alpha Estate", None),
+                    ("alpha estate ", "https://alpha.pk"),
+                    ("Beta Property", None),
+                ]
+            )
+        ),
+    )
+
+    dealers = benchmark.discover_dealers("Gulberg Lahore")
+
+    assert [d["name"] for d in dealers] == ["Alpha Estate", "Beta Property"]
+    # first occurrence wins — duplicate's url not used
+    assert dealers[0]["phone_label"] == "Gulberg Lahore"
+
+
+def test_discover_dealers_drops_blank_names(monkeypatch):
+    monkeypatch.setattr(benchmark.httpx, "post", _fake_httpx_post())
+    monkeypatch.setattr(
+        benchmark,
+        "_client",
+        lambda: _fake_openai(_dealers_parsed([("  ", None), ("Real Dealer", None)])),
+    )
+
+    dealers = benchmark.discover_dealers("Gulberg Lahore")
+
+    assert [d["name"] for d in dealers] == ["Real Dealer"]

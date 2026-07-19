@@ -77,3 +77,7 @@ def get_quote(id: str) -> dict[str, Any] | None:
 
 def list_quotes(**filters: Any) -> list[dict[str, Any]]:
     return _list("quotes", **filters)
+
+
+def update_quote(id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    return _update("quotes", id, fields)

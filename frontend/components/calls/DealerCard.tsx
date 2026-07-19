@@ -81,6 +81,14 @@ export default function DealerCard({
           {outcome === "quote" && quote ? (
             <span className="text-success">
               Quoted PKR {new Intl.NumberFormat("en-PK").format(quote.total_first_year)} first year
+              {quote.flagged && (
+                <span
+                  className="ml-2 rounded-md bg-error-dim px-2 py-0.5 font-mono text-[10px] text-error"
+                  title={quote.flag_reason ?? undefined}
+                >
+                  flagged
+                </span>
+              )}
             </span>
           ) : outcome === "declined" ? (
             <span className="text-error">Declined — unit not available</span>
