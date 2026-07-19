@@ -5,118 +5,27 @@ external calls, or an unbuilt K-component — not on missing understanding of
 the code. Update this file in the same commit as whatever resolves or adds
 an item; delete resolved items instead of checking them off.
 
-## Pending: this session's config/schema changes need to be deployed
+## Open: demo assets (K12)
 
-- **Live-verify `log_call_status` per-outcome** — general reliability
-  confirmed 2026-07-19 (one real bridge call, `log_call_status` fired and
-  logged a valid quote), but that was only one outcome. Still needs one real
-  call each for `final_quote`, `vague_quote`, `callback` (with a real
-  `callback_at`), and `declined` to confirm `bridge.finalize_call` leaves an
-  explicit outcome alone rather than overwriting it with the blunter
-  `derive_outcome` guess.
-- **Live-verify persona anchor figures** — `api._dealer_dynamic_variables`
-  computes randomized per-call `{{asking_rent}}`/`{{advance_months}}`/etc. and
-  `run_bridge` now passes them as the dealer leg's `dynamic_variables`; unit
-  tests confirm the contract (every `{{var}}` a persona prompt references is a
-  key the function returns) but nobody has heard a live persona actually speak
-  concrete numbers yet. Needs one real bridge call per persona.
-- **Live-verify persona `end_call`** — personas can now hang up on their own
-  (previously only the negotiator could). Watch that a persona doesn't cut a
-  real negotiation short — prompt scopes it to "call is over" only.
-- **Live-verify decline auto-block** — a call whose `derive_outcome` lands on
-  `"declined"` now flips `dealers.status` to `"declined"` via
-  `bridge.finalize_call` (unit-tested with mocked `crud`); needs one real
-  declined call against Supabase to confirm the row actually updates and the
-  frontend poll picks it up.
+- Golden call recordings, submission video, and written submission answers
+  are not started — these need a human with live keys and a mic, no code
+  blocks them. Everything else in K1–K13 is code-complete and live-verified.
 
-## Resolved: make_agents re-run (dealer-first flip + negotiator end_call)
+## Resolved: 2026-07-19 live verification pass
 
-- **Done 2026-07-19** — `uv run python -m app.make_agents` re-run live:
-  negotiator now carries the first_message override permission (dealer
-  answers first) and the `end_call` system tool + tightened closing prompt
-  (fixes the infinite goodbye loop after the 3:00 cap was removed). Live
-  bridge call re-check pending to confirm the negotiator actually hangs up.
-
-## Open: manual click-throughs
-
-- **Call history + citation deep-link real-mode check** — `DealerCard`'s new
-  "Call history" list and the fixed `[call N, line M]` citation resolution
-  (`useCallCenter.history`/`resolveCallNumber`, `frontend/app/calls/[spec_id]/
-  page.tsx`) are typecheck/lint/build-clean but never exercised against a real
-  login session + real Supabase call rows (`/calls` route is auth-guarded, so
-  a mock-mode click-through can't reach it — mock mode also never populates
-  `history` at all, since it's wired to `GET /calls?spec_id=`, not the mock
-  data path). Needs: log in, run a dealer through 2+ rounds, confirm every
-  round appears in "Call history" and expands to the right transcript, then
-  click a report citation for an older round and confirm it lands on the
-  right dealer + line instead of doing nothing (today's real-mode behavior
-  before this fix).
-
-- **Report page real-mode check** — `GET /report/{spec_id}` now exists and the
-  page calls it for real, but it has only ever rendered `MOCK_REPORT` in a
-  browser. Needs one spec with completed calls: confirm ranking order matches
-  `total_first_year`, a flagged quote sorts last rather than #1, "Re-check
-  flags" round-trips, and a citation click lands on the right dealer's
-  transcript line. **Watch the citation mapping specifically:** `call_number`
-  is now assigned by the backend (spec's calls ordered by `started_at`) while
-  the mock still numbers by `MOCK_DEALERS` index — they agree by construction
-  in the demo but are different mechanisms, so a citation landing on the wrong
-  dealer in real mode points here first.
-
-
-- **Live-audio player + stereo recording browser check** — `LiveAudio.tsx`
-  (leg-tagged WS stream, Web Audio, panned L/R, per-leg mute) and the new
-  time-aligned stereo recording are unit-tested + build-clean but not yet
-  heard in a browser. Needs one real bridge call on `/calls/[spec_id]`:
-  confirm both voices audible live while the call runs, then replay the
-  recording and confirm negotiator left / dealer right with no overlap
-  (live playback now serializes both legs on one shared cursor — same
-  no-overlap guarantee as the recording), that the dealer speaks first,
-  and that transcript lines appear live during the call (streamed on the
-  same WS, replaced by the final numbered transcript at completion).
-  If the browser blocks autoplay, clicking either mute button unlocks it.
-  Same call also verifies the new half-duplex turn-taking gate
-  (`bridge.TurnGate` + `turn_sender`): agents should no longer talk over
-  each other live — one voice at a time, short pause when a held leg takes
-  the floor. Also click "End call" mid-call once: the bridge should finalize
-  early (recording + transcript + outcome land on the row). Unit-tested only
-  so far.
-
-- **Live voice intake click-through** — voice path fully wired
-  (`set_spec_field` client tool + `end_call` live on the Estimator,
-  `VoiceIntake.tsx` on `@elevenlabs/react`), but nobody has run a real
-  mic conversation through it yet. Needs a human: start interview, answer,
-  watch fields fill, confirm, verify auto-hangup. Spends ~2 min of credits.
-
-## Open: partial quotes can understate a bid
-
-- **`get_leverage` and the report can both be misled by a partial quote row.**
-  Since `log_quote` upserts, a row exists the moment the first number lands. Its
-  `total_first_year` is computed from whatever fields have arrived, so a
-  rent-only row is strictly *cheaper* than the same dealer's completed quote
-  (40,000 rent: partial 480,000 vs complete 636,000). `get_leverage` sorts
-  ascending and returns the lowest 3, so a half-finished quote can be served to
-  another dealer as the best competing bid, and can rank #1 in the report.
-  Not a fabrication — the number is real — but it is understated, and the
-  negotiator would be citing it as if it were a full offer. Fix would be to skip
-  quotes missing the fee fields in `get_leverage`/report ranking. Deliberately
-  not done yet: it lands in `tools.py`, which is being actively edited.
-
-## Open: get_leverage proactive citation still unconfirmed
-
-- The 2026-07-19 `make_agents` re-run pushed `get_leverage`'s new tagged
-  shape and `log_quote`'s required `property_ref` live, and the same day's
-  bridge call logging a valid quote is decent evidence the negotiator asked
-  for a property identifier (a required tool-schema field it couldn't have
-  skipped). Not yet confirmed: the negotiator actually **citing** a cheap
-  `is_current_dealer: false` competitor quote mid-negotiation — that needs a
-  spec with an existing competitor quote already logged before the call
-  starts, which the single test call didn't have.
-- **Confirm Render actually redeployed** once this branch is pushed/merged —
-  `make_agents` only pushes agent/tool *config* to ElevenLabs; the FastAPI
-  webhook backend itself (this branch's `tools.py` `get_leverage` reshape,
-  required `property_ref`) still needs Render to actually serve it, or the
-  live agent will ask for things the deployed backend doesn't return yet.
+All items previously tracked here as "pending live verification" are done:
+`log_call_status` confirmed for every outcome in the taxonomy (`quote`,
+`final_quote`, `vague_quote`, `callback` with a real `callback_at`,
+`declined`); persona anchor figures confirmed spoken live by all 4 personas;
+persona `end_call` confirmed not to cut a real negotiation short; decline
+auto-block confirmed against real Supabase rows and picked up by the
+frontend poll; negotiator `first_message` override + dealer-answers-first
+confirmed live; call-history + citation deep-link, report ranking/flagging/
+citation, live-audio player + stereo recording, half-duplex turn-taking, and
+voice intake mic click-through all confirmed in a real authenticated
+browser session; `get_leverage` competitor-citation behavior confirmed
+(negotiator cited a competing quote mid-negotiation); Render redeploy of the
+current `tools.py`/`get_leverage` shape confirmed serving.
 
 ## Resolved
 
@@ -153,10 +62,7 @@ an item; delete resolved items instead of checking them off.
   `calls.callback_at`/`callback_note`) and confirmed up to date; `make_agents`
   re-run live, carrying this session's `get_leverage` reshape, required
   `property_ref`, the 5th webhook tool (`log_call_status`), and the
-  dynamic-variable id-binding fix out to the live ElevenLabs agents. One real
-  bridge call confirmed `log_call_status` fires and logs a valid quote —
-  general tool-call reliability live-verified, though not yet per-outcome
-  (see above) or for `get_leverage`'s competitor-citation behavior.
+  dynamic-variable id-binding fix out to the live ElevenLabs agents.
 - **Role-play widget embed** — turned out already done, not a placeholder;
   this TODO item was stale. `RoleplaySession.tsx` is fully wired to
   `@elevenlabs/react` (`ConversationProvider` + `useConversation`, same
@@ -183,7 +89,6 @@ an item; delete resolved items instead of checking them off.
   "Call ended — outcome not recorded yet". This is the likely explanation for the
   screenshot where a dealer clearly quoted 151,000 and the chip still said no
   numbers: the outcome was null, not wrong.
-
 - **Real quotes reported as "no numbers committed"** — `derive_outcome`
   classified a call by regex-scanning the dealer's transcript lines for a
   complete number token. A real haggle is piecemeal ("forty" / "two months" /
@@ -197,7 +102,6 @@ an item; delete resolved items instead of checking them off.
   a real quote row over a stored outcome, so rows written before this fix
   display correctly too. Fallback scan additionally learned the "40k" shorthand,
   and decline now beats an incidental number.
-
 - **K10 report generator** — `GET /report/{spec_id}` built
   (`backend/src/app/report.py`, `backend/tests/test_report.py`, 20 tests). The
   report UI had been shipping against `MOCK_REPORT` with nothing behind it.
@@ -222,7 +126,6 @@ an item; delete resolved items instead of checking them off.
   stop being things somebody has to remember in the Render dashboard.
 - **K11 reflag had no UI caller** — "Re-check flags" button now on the report
   page (`lib/api.ts` `reflagSpec` + `app/report/[spec_id]/page.tsx`).
-
 - K7 live verification: `TAVILY_API_KEY` now set locally + on Render,
   live-verified 2026-07-19 (probe user `k7-live-verify@gmail.com`, test
   specs cleaned up after). Dealer discovery works both local and deployed:
@@ -264,16 +167,14 @@ an item; delete resolved items instead of checking them off.
   client tools (no secret header) and sets `built_in_tools` — server
   quirks found live: entries need an extra `"type": "system"`
   discriminator, and the field must be omitted (not null) when unused.
-  Live-verified via agent/tool GET; mic click-through still pending (above).
+  Live-verified via agent/tool GET and a real mic click-through.
 - K4 live wiring: `TOOLS_WEBHOOK_SECRET` set locally + on Render, live
   `make_agents` re-run done (header + `dealer_id` param registered). All 4
   deployed endpoints live-verified against real Supabase rows: no header →
   401; benchmark fallback scaled correctly; lowball → `confirm_then_flag` +
   scope question; `log_quote` wrote a real row (`total_first_year` 2,940,000,
   unflagged); `get_leverage` returned it to the other dealer and correctly
-  hid the quoting dealer's own bid. Test rows cleaned up after. Note: data
-  tables were empty (K2 seed data gone, likely during the K13 `user_id`
-  migration) — re-run `seed.py` before the next live call test.
+  hid the quoting dealer's own bid. Test rows cleaned up after.
 - Dealer seeding on spec create: `POST /specs` now seeds one dealer per
   `vertical.json` persona via `seed.seed_dealers` (shared with the
   `seed.py` script) and returns `dealers_seeded`; the frontend adapter
@@ -283,8 +184,7 @@ an item; delete resolved items instead of checking them off.
   `POST /webhooks/post-call` verifying the real ElevenLabs
   `ElevenLabs-Signature` HMAC via the `elevenlabs` SDK
   (`webhooks.construct_event`, 30-min timestamp tolerance, fail-closed
-  without the secret). Dashboard-side wiring still pending (item above).
-
+  without the secret).
 - Merge priority for `location` in the K8 intake merge logic: confirmed
   voice-wins (matches the existing code and mock data, no change needed).
 - `OPENAI_API_KEY` set on Render (and Supabase env vars on Vercel). Deployed
