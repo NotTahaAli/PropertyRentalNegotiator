@@ -169,6 +169,19 @@ export async function listSpecs(): Promise<SpecListItem[]> {
   }));
 }
 
+export async function getSpec(specId: string): Promise<SpecListItem> {
+  if (USE_MOCKS) {
+    await new Promise((r) => setTimeout(r, 200));
+    const fixture = MOCK_SPEC_FIXTURES.find((f) => f.item.id === specId);
+    if (fixture) return fixture.item;
+    return { id: specId, confirmed: true, spec: {} };
+  }
+  const row = await getJson<{ id: string; created_at?: string; confirmed: boolean; spec_json: Partial<JobSpec> }>(
+    `/specs/${encodeURIComponent(specId)}`
+  );
+  return { id: row.id, created_at: row.created_at, confirmed: row.confirmed, spec: row.spec_json };
+}
+
 export async function listSpecsWithProgress(): Promise<SpecListEntry[]> {
   if (USE_MOCKS) {
     await new Promise((r) => setTimeout(r, 400));
