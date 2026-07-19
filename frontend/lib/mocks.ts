@@ -214,7 +214,8 @@ export const MOCK_QUOTES: Partial<Record<Dealer["persona"], Quote[]>> = {
     {
       id: "quote_lowballer", call_id: "call_lowballer", dealer_id: "dealer_lowballer",
       monthly_rent: 65000, advance_months: 2, commission: 32500, maintenance: 3000,
-      annual_increment_pct: 5, total_first_year: 998500, binding: false,
+      annual_increment_pct: 5, total_first_year: 998500, total_term: 2577250, binding: false,
+      available_from: "2026-08-15",
       notes: "No written agreement offered; wants token money first.",
       flagged: true,
       flag_reason: "Quoted ~40% under benchmark with no written agreement offered — confirm scope before trusting this number.",
@@ -225,14 +226,16 @@ export const MOCK_QUOTES: Partial<Record<Dealer["persona"], Quote[]>> = {
     {
       id: "quote_upseller_shop2", call_id: "call_upseller", dealer_id: "dealer_upseller",
       monthly_rent: 95000, advance_months: 6, commission: 142500, maintenance: 12000,
-      annual_increment_pct: 10, total_first_year: 1996500, binding: false,
+      annual_increment_pct: 10, total_first_year: 1996500, total_term: 4335500, binding: false,
+      available_from: "2026-09-10",
       notes: "Advance 6 months; increment talked down from 12% to 10%.",
       property_ref: "Shop 2",
     },
     {
       id: "quote_upseller_shop7", call_id: "call_upseller", dealer_id: "dealer_upseller",
       monthly_rent: 80000, advance_months: 6, commission: 120000, maintenance: 10000,
-      annual_increment_pct: 10, total_first_year: 1680000, binding: false,
+      annual_increment_pct: 10, total_first_year: 1680000, total_term: 3652000, binding: false,
+      available_from: "2026-09-10",
       notes: "Smaller unit; same advance/increment terms as Shop 2.",
       property_ref: "Shop 7",
     },
@@ -241,7 +244,8 @@ export const MOCK_QUOTES: Partial<Record<Dealer["persona"], Quote[]>> = {
     {
       id: "quote_firm", call_id: "call_firm", dealer_id: "dealer_firm",
       monthly_rent: 110000, advance_months: 2, commission: 55000, maintenance: 5000,
-      annual_increment_pct: 5, total_first_year: 1655000, binding: true,
+      annual_increment_pct: 5, total_first_year: 1655000, total_term: 4355000, binding: true,
+      available_from: "2026-08-01",
       notes: "Written draft agreement offered; half commission waived for 3-year lease.",
       property_ref: null,
     },
@@ -256,7 +260,8 @@ export const MOCK_QUOTES_ROUND2: Partial<Record<Dealer["persona"], Quote[]>> = {
     {
       id: "quote_firm_r2", call_id: "call_firm_r2", dealer_id: "dealer_firm",
       monthly_rent: 100000, advance_months: 2, commission: 0, maintenance: 5000,
-      annual_increment_pct: 5, total_first_year: 1460000, binding: true,
+      annual_increment_pct: 5, total_first_year: 1460000, total_term: 3990000, binding: true,
+      available_from: "2026-08-01",
       notes: "Round 2: matched a documented 65,000 competing offer — rent trimmed 110k→100k, commission fully waived.",
       property_ref: null,
     },
@@ -282,43 +287,46 @@ export const MOCK_REPORT: Report = {
       property_ref: null, row_id: "dealer_firm:",
       rank: 1, quote: MOCK_QUOTES_ROUND2.firm?.[0] ?? null, round: 2, outcome: "quote",
       call_number: 4, citation_line: 4, recording_url: mockRecordingUrl(),
+      meets_deadline: true, total_term: MOCK_QUOTES_ROUND2.firm?.[0]?.total_term, available_from: MOCK_QUOTES_ROUND2.firm?.[0]?.available_from,
     },
     {
       dealer_id: "dealer_upseller", dealer_name: "Upseller Dealer", persona: "upseller",
       property_ref: "Shop 7", row_id: "dealer_upseller:Shop 7",
       rank: 2, quote: upsellerShop7, round: 2, outcome: "quote",
       call_number: 3, citation_line: 14, recording_url: mockRecordingUrl(),
+      meets_deadline: false, total_term: upsellerShop7?.total_term, available_from: upsellerShop7?.available_from,
     },
     {
       dealer_id: "dealer_upseller", dealer_name: "Upseller Dealer", persona: "upseller",
       property_ref: "Shop 2", row_id: "dealer_upseller:Shop 2",
       rank: 3, quote: upsellerShop2, round: 2, outcome: "quote",
       call_number: 3, citation_line: 2, recording_url: mockRecordingUrl(),
+      meets_deadline: false, total_term: upsellerShop2?.total_term, available_from: upsellerShop2?.available_from,
     },
     {
       dealer_id: "dealer_lowballer", dealer_name: "Lowballer Dealer", persona: "lowballer",
       property_ref: null, row_id: "dealer_lowballer:",
       rank: 4, quote: MOCK_QUOTES.lowballer?.[0] ?? null, round: 2, outcome: "quote",
       call_number: 2, citation_line: 1, recording_url: mockRecordingUrl(),
+      meets_deadline: false, total_term: MOCK_QUOTES.lowballer?.[0]?.total_term, available_from: MOCK_QUOTES.lowballer?.[0]?.available_from,
     },
     {
       dealer_id: "dealer_stonewaller", dealer_name: "Stonewaller Dealer", persona: "stonewaller",
       property_ref: null, row_id: "dealer_stonewaller:",
       rank: null, quote: null, round: 1, outcome: "declined",
       call_number: 1, citation_line: 1, recording_url: mockRecordingUrl(),
+      meets_deadline: null, total_term: null, available_from: null,
     },
   ],
   recommended_dealer_id: "dealer_firm",
   recommended_row_id: "dealer_firm:",
   recommendation_text:
-    "Firm-but-Fair offers the best verified deal at PKR 1,460,000 for the first year. " +
-    "On the first call it quoted a fair, fully itemised 110,000/month with standard terms. " +
-    "On the follow-up call, once the Negotiator raised a real logged offer of 65,000/month from " +
-    "another dealer, Firm-but-Fair matched it in spirit — trimming rent to 100,000/month and " +
-    "fully waiving the commission — a concession only possible because of leverage the agent " +
-    "actually gathered, not a scripted discount. Lowballer's headline number is lower, but it's " +
-    "flagged: quoted far enough under benchmark to warrant scrutiny, with no written agreement " +
-    "offered, so it is not recommended as the top pick despite the number.",
+    "Firm-but-Fair offers the best verified deal at PKR 3,990,000 over the full 3-year term (first year PKR 1,460,000) [call 4, line 4]. " +
+    "They confirmed delivery by your target date of 2026-08-01. " +
+    "That is PKR 100,000 per month, 2 months advance, no commission. " +
+    "Lowballer's headline number is lower at PKR 2,577,250, but it is flagged — " +
+    "Quoted ~40% under benchmark with no written agreement offered — confirm scope before trusting this number. — " +
+    "so it is ranked below the clean offers rather than recommended [call 2, line 1].",
 };
 
 // ── Past-calls dashboard mock — raw fixtures, run through the same

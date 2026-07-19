@@ -48,6 +48,18 @@ def build_negotiator_prompt(config: VerticalConfig) -> str:
     lines.append("--- CALL HISTORY WITH THIS DEALER ---")
     lines.append("This is call number {{round_number}} with them.")
     lines.append("{{prior_call_summary}}")
+
+    if config.deadline_field:
+        lines.append("")
+        lines.append("--- DELIVERY DEADLINE ---")
+        lines.append(f"The client needs the property by {{{{{config.deadline_field}}}}}. Ask the dealer to confirm ")
+        lines.append("a specific handover or availability date. Log it as available_from on log_quote.")
+    if config.duration_field:
+        lines.append("")
+        lines.append("--- WHOLE-TERM COST ---")
+        lines.append(f"Optimise for the lowest cost over the full {{{{{config.duration_field}}}}}-period term, not just the first year.")
+        lines.append("The annual increment compounds — push it down explicitly, even 1% saves significantly over several years.")
+
     return config.negotiator_prompt + "\n\n" + "\n".join(lines)
 
 
@@ -113,6 +125,10 @@ def build_tool_schemas(config: VerticalConfig) -> list[dict]:
             },
             "binding": {"type": "boolean", "description": "Whether the dealer can produce a written quote. Send true as soon as they confirm it."},
             "notes": {"type": "string", "description": "Any other relevant detail about the quote or the property."},
+            "available_from": {
+                "type": "string",
+                "description": "Date the dealer confirms the shop/property will be available, in YYYY-MM-DD format.",
+            },
         },
         # Partial quotes allowed: only the ids (plus monthly_rent, which QuoteCreate
         # hard-requires, and property_ref) are schema-required. binding stays

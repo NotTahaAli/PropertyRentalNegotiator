@@ -58,6 +58,12 @@ class VerticalConfig(BaseModel):
     first_messages: dict[str, str]
     fee_hints: dict[str, str]
 
+    # ── K10: whole-term cost + delivery gate ──────────────────────
+    # All optional; verticals that omit them degrade cleanly.
+    duration_field: Optional[str] = None   # spec field giving periods (e.g. "lease_years")
+    increment_field: Optional[str] = None  # fee name that is a % growth rate (e.g. "annual_increment_pct")
+    deadline_field: Optional[str] = None   # spec field for delivery deadline (e.g. "move_in")
+
 
 def load_vertical(path: Path = DEFAULT_CONFIG_PATH) -> VerticalConfig:
     data = json.loads(Path(path).read_text())

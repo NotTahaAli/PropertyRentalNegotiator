@@ -81,7 +81,7 @@ export default function ReportPage() {
             Report
           </h2>
           <p className="mt-1.5 max-w-lg text-sm text-text-secondary">
-            Every dealer, ranked by total first-year cost, with red flags and
+            Every dealer, ranked by total term cost, with red flags and
             transcript evidence for the recommended deal.
           </p>
           <div className="mt-3 print:hidden">
