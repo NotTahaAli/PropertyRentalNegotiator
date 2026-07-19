@@ -38,6 +38,13 @@ const OUTCOME_LABELS: Record<string, { text: string; className: string }> = {
   declined: { text: "Dealer declined — unit not available", className: "bg-error-dim text-error" },
   callback: { text: "Dealer asked for a callback — no numbers committed", className: "bg-elevated text-text-secondary" },
   failed: { text: "Call failed before completing", className: "bg-error-dim text-error" },
+  // Shown when the backend never recorded an outcome (call not finalized, or the
+  // post-call webhook never landed). Saying "no numbers committed" here would be
+  // asserting something we don't know.
+  unrecorded: {
+    text: "Call ended — outcome not recorded yet",
+    className: "bg-elevated text-text-secondary",
+  },
 };
 
 interface CallStatusPanelProps {
@@ -177,10 +184,10 @@ export default function CallStatusPanel({
           {!(outcome === "quote" && quote) && (
             <div
               className={`rounded-lg px-3.5 py-2.5 text-sm ${
-                (OUTCOME_LABELS[outcome ?? "callback"] ?? OUTCOME_LABELS.callback).className
+                (OUTCOME_LABELS[outcome ?? "unrecorded"] ?? OUTCOME_LABELS.unrecorded).className
               }`}
             >
-              {(OUTCOME_LABELS[outcome ?? "callback"] ?? OUTCOME_LABELS.callback).text}
+              {(OUTCOME_LABELS[outcome ?? "unrecorded"] ?? OUTCOME_LABELS.unrecorded).text}
             </div>
           )}
           <AudioPlayer url={recordingUrl} />

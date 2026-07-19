@@ -18,8 +18,7 @@ The repo is greenfield: `backend/` is a uv-managed Python package (`src/app/`) �
 
 ## Status — work breakdown (K1–K13)
 
-**All 13 components are code-complete. 244 backend tests, all passing in this
-environment.** (Earlier runs elsewhere saw a handful of `POST
+**All 13 components are code-complete. 254 backend tests; 249 pass.** (Earlier runs elsewhere saw a handful of `POST
 /webhooks/post-call` failures, all the same `ImportError: socksio` from the
 ElevenLabs SDK's httpx client behind a SOCKS proxy — an environment artifact,
 not a product defect.) What remains is **live verification and demo assets**,
@@ -88,6 +87,21 @@ quotes  (id, call_id, dealer_id, monthly_rent, advance_months, commission, maint
 - `GET /report/{spec_id}` (K10) — ranked report; JWT + spec ownership.
 - `POST /specs/{id}/reflag` (K11) — re-runs red-flag rules over a spec's quotes; may unflag.
 - `POST /webhooks/post-call` — ElevenLabs post-call transcript, HMAC-verified, fail-closed.
+
+### Call history (follow-up calls)
+
+`POST /calls/start` looks up the dealer's earlier calls on the same spec and
+passes two things into the negotiator's prompt: `round_number` and a
+`prior_call_summary` (their last logged quote + the tail of the last
+transcript). The dealer persona is fed its **own last quote** rather than fresh
+band-generated numbers, so it doesn't contradict itself between rounds.
+
+Strictly this dealer's own history. Other dealers' bids reach the agent only
+through `get_leverage` — see the guardrail below; a prompt variable is exactly
+the kind of "other path" it forbids. `test_prior_calls_excludes_other_dealers_and_the_current_call`
+pins this.
+
+Prompt changes require `uv run python -m app.make_agents` to take effect live.
 
 ### The honesty guardrail (core product thesis — never weaken it)
 

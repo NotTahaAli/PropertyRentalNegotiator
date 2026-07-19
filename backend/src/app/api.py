@@ -264,7 +264,75 @@ def _agent_manifest() -> dict[str, str]:
 _bridge_tasks: set[asyncio.Task] = set()
 
 
-def _dynamic_variables(spec: dict[str, Any], call_id: str, dealer_id: str) -> dict[str, Any]:
+def _prior_calls(spec_id: str, dealer_id: str, exclude_call_id: str) -> list[dict[str, Any]]:
+    """This dealer's earlier calls on this spec, oldest first."""
+    calls = [
+        c
+        for c in crud.list_calls(spec_id=spec_id)
+        if c["dealer_id"] == dealer_id and c["id"] != exclude_call_id
+    ]
+    return sorted(calls, key=lambda c: (c.get("started_at") or "", str(c["id"])))
+
+
+def _latest_prior_quote(prior_calls: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The last quote this dealer actually gave, across earlier calls."""
+    for call in reversed(prior_calls):
+        quotes = crud.list_quotes(call_id=call["id"])
+        if quotes:
+            return quotes[-1]
+    return None
+
+
+def _prior_call_summary(prior_calls: list[dict[str, Any]], quote: dict[str, Any] | None) -> str:
+    """Plain-text recap of this dealer's own history, for the negotiator's prompt.
+
+    Only ever this dealer's own words and own figures. Other dealers' bids stay
+    exclusively behind `get_leverage` — the honesty guardrail forbids competing-bid
+    information reaching the agent by any other path, and this is another path.
+    """
+    if not prior_calls:
+        return "This is your first call with this dealer. You have no prior history."
+
+    config = load_vertical()
+    parts = [f"You have already spoken to this dealer {len(prior_calls)} time(s)."]
+    if quote:
+        terms = [f"rent {quote['monthly_rent']:,.0f} {config.currency} a month"]
+        if quote.get("advance_months") is not None:
+            terms.append(f"{quote['advance_months']:g} months advance")
+        if quote.get("commission") is not None:
+            terms.append(f"commission {quote['commission']:,.0f}")
+        if quote.get("maintenance") is not None:
+            terms.append(f"maintenance {quote['maintenance']:,.0f} a month")
+        if quote.get("annual_increment_pct") is not None:
+            terms.append(f"{quote['annual_increment_pct']:g}% yearly increase")
+        parts.append("They previously quoted: " + ", ".join(terms) + ".")
+        parts.append(
+            "Do not ask them to repeat these terms. Acknowledge the quote you already "
+            "have and push for an improvement on it."
+        )
+    else:
+        parts.append("They did not give you a quote last time.")
+
+    last = prior_calls[-1]
+    transcript = last.get("transcript_json")
+    if isinstance(transcript, list) and transcript:
+        tail = [
+            f"{line.get('speaker')}: {line.get('text')}"
+            for line in transcript[-6:]
+            if line.get("text")
+        ]
+        if tail:
+            parts.append("How the last call ended — " + " | ".join(tail))
+    return " ".join(parts)
+
+
+def _dynamic_variables(
+    spec: dict[str, Any],
+    call_id: str,
+    dealer_id: str,
+    round_number: int = 1,
+    prior_summary: str = "",
+) -> dict[str, Any]:
     config = load_vertical()
     return {
         **spec["spec_json"],
@@ -272,6 +340,9 @@ def _dynamic_variables(spec: dict[str, Any], call_id: str, dealer_id: str) -> di
         "call_id": call_id,
         "dealer_id": dealer_id,
         "spec_id": spec["id"],
+        "round_number": round_number,
+        "prior_call_summary": prior_summary
+        or "This is your first call with this dealer. You have no prior history.",
     }
 
 
@@ -290,7 +361,17 @@ def _round1000(x: float) -> float:
     return round(x / 1000) * 1000
 
 
-def _dealer_dynamic_variables(spec: dict[str, Any], persona: str) -> dict[str, Any]:
+def _dealer_dynamic_variables(
+    spec: dict[str, Any], persona: str, prior_quote: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Numbers for the dealer persona to quote.
+
+    Generated from the persona's band on a first call, but **reused verbatim from
+    the dealer's own last quote on any later call**. Regenerating them per call
+    meant a dealer who said 151,000 in round 1 said something else in round 2 —
+    the negotiator would then be citing a figure the dealer never recognises, and
+    the whole leverage story falls apart. A real dealer remembers what they asked.
+    """
     from .tools import _benchmark  # local: tools.py imports from api.py
 
     config = load_vertical()
@@ -306,13 +387,42 @@ def _dealer_dynamic_variables(spec: dict[str, Any], persona: str) -> dict[str, A
         base_rent = fallback_per_sqft * (area or 500)
 
     band = PERSONA_BANDS.get(persona, PERSONA_BANDS["firm"])
-    asking_rent = _round1000(base_rent * random.uniform(*band["rent"]))
+    if prior_quote and prior_quote.get("monthly_rent") is not None:
+        asking_rent = prior_quote["monthly_rent"]
+        terms = {
+            "asking_rent": asking_rent,
+            "advance_months": prior_quote.get("advance_months")
+            if prior_quote.get("advance_months") is not None
+            else round(random.uniform(*band["advance"])),
+            "commission": prior_quote.get("commission")
+            if prior_quote.get("commission") is not None
+            else _round1000(asking_rent * random.uniform(*band["commission_mo"])),
+            "maintenance": prior_quote.get("maintenance")
+            if prior_quote.get("maintenance") is not None
+            else _round1000(asking_rent * random.uniform(*band["maint_pct"])),
+            "annual_increment_pct": prior_quote.get("annual_increment_pct")
+            if prior_quote.get("annual_increment_pct") is not None
+            else round(random.uniform(*band["increment"])),
+        }
+        prior_note = (
+            "You have spoken to this caller before and already quoted these exact "
+            "terms. Stand by them. You may improve them if the caller gives you a "
+            "real reason, but never pretend this is a fresh enquiry and never quote "
+            "different numbers than the ones above."
+        )
+    else:
+        asking_rent = _round1000(base_rent * random.uniform(*band["rent"]))
+        terms = {
+            "asking_rent": asking_rent,
+            "advance_months": round(random.uniform(*band["advance"])),
+            "commission": _round1000(asking_rent * random.uniform(*band["commission_mo"])),
+            "maintenance": _round1000(asking_rent * random.uniform(*band["maint_pct"])),
+            "annual_increment_pct": round(random.uniform(*band["increment"])),
+        }
+        prior_note = "This is your first call with this caller."
     return {
-        "asking_rent": asking_rent,
-        "advance_months": round(random.uniform(*band["advance"])),
-        "commission": _round1000(asking_rent * random.uniform(*band["commission_mo"])),
-        "maintenance": _round1000(asking_rent * random.uniform(*band["maint_pct"])),
-        "annual_increment_pct": round(random.uniform(*band["increment"])),
+        **terms,
+        "prior_call_note": prior_note,
         "currency": config.currency,
         "location": spec_json.get("location") or "the area",
         "area_sqft": area if area is not None else "",
@@ -347,7 +457,22 @@ async def start_call(
     )
     call_id = call["id"]
     agents = _agent_manifest()
-    dynamic_vars = _dynamic_variables(spec, call_id, body.dealer_id)
+    # History is an enhancement, not a precondition: if these reads fail the call
+    # still goes out, just without memory. Logged loudly so a permanently broken
+    # history doesn't quietly masquerade as "every call is the first call".
+    try:
+        prior_calls = _prior_calls(body.spec_id, body.dealer_id, call_id)
+        prior_quote = _latest_prior_quote(prior_calls)
+    except Exception as exc:  # pragma: no cover - exercised via the degraded path
+        print(f"call {call_id}: prior-call history unavailable ({exc!r})")
+        prior_calls, prior_quote = [], None
+    dynamic_vars = _dynamic_variables(
+        spec,
+        call_id,
+        body.dealer_id,
+        round_number=body.round,
+        prior_summary=_prior_call_summary(prior_calls, prior_quote),
+    )
 
     if body.mode == "roleplay":
         return {
@@ -356,7 +481,7 @@ async def start_call(
             "dynamic_variables": dynamic_vars,
         }
 
-    dealer_vars = _dealer_dynamic_variables(spec, dealer["persona"])
+    dealer_vars = _dealer_dynamic_variables(spec, dealer["persona"], prior_quote)
     # keep a strong reference: a bare create_task can be garbage-collected
     # mid-run, killing the bridge without its finalize (row stuck "running")
     task = asyncio.create_task(

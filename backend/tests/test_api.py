@@ -379,6 +379,8 @@ def test_start_call_creates_row_and_spawns_bridge_task(monkeypatch):
         crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1", "persona": "firm"}
     )
     monkeypatch.setattr(crud, "create_call", lambda row: {"id": "call-1", **row})
+    monkeypatch.setattr(crud, "list_calls", lambda spec_id: [])
+    monkeypatch.setattr(crud, "list_quotes", lambda call_id: [])
     spawned = []
     monkeypatch.setattr(api.asyncio, "create_task", _fake_create_task_recording(spawned))
     _as(USER_A)
@@ -453,6 +455,8 @@ def test_start_call_roleplay_returns_agent_and_dynamic_variables_with_no_bid_dat
         crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1", "persona": "firm"}
     )
     monkeypatch.setattr(crud, "create_call", lambda row: {"id": "call-2", **row})
+    monkeypatch.setattr(crud, "list_calls", lambda spec_id: [])
+    monkeypatch.setattr(crud, "list_quotes", lambda call_id: [])
     spawned = []
     monkeypatch.setattr(api.asyncio, "create_task", _fake_create_task_recording(spawned))
     _as(USER_A)
@@ -1128,3 +1132,132 @@ def test_dealer_dynamic_variables_defaults_missing_spec_fields():
     assert v["floor"] == ""
     assert v["area_sqft"] == ""
     assert v["asking_rent"] > 0
+
+
+# --- call history: later calls remember this dealer's own quote --------------
+
+def _hist(monkeypatch, calls, quotes_by_call):
+    monkeypatch.setattr(crud, "list_calls", lambda spec_id: calls)
+    monkeypatch.setattr(crud, "list_quotes", lambda call_id: quotes_by_call.get(call_id, []))
+
+
+def test_prior_call_summary_is_empty_on_a_first_call(monkeypatch):
+    _hist(monkeypatch, [], {})
+    summary = api._prior_call_summary([], None)
+    assert "first call" in summary
+
+
+def test_prior_call_summary_recites_the_dealers_own_quote(monkeypatch):
+    calls = [
+        {
+            "id": "c1",
+            "dealer_id": "d1",
+            "started_at": "2026-01-01T10:00:00Z",
+            "transcript_json": [
+                {"line": 1, "speaker": "dealer", "text": "Rent is 151000."},
+                {"line": 2, "speaker": "negotiator", "text": "Understood, thank you."},
+            ],
+        }
+    ]
+    quote = {
+        "monthly_rent": 151000,
+        "advance_months": 2,
+        "commission": 151000,
+        "maintenance": 5000,
+        "annual_increment_pct": 5,
+    }
+
+    summary = api._prior_call_summary(calls, quote)
+
+    assert "151,000" in summary
+    assert "2 months advance" in summary
+    assert "Do not ask them to repeat" in summary
+    assert "Rent is 151000." in summary  # last-call tail is carried through
+
+
+def test_prior_call_summary_notes_when_no_quote_was_given():
+    calls = [{"id": "c1", "dealer_id": "d1", "started_at": "2026-01-01T10:00:00Z"}]
+    assert "did not give you a quote" in api._prior_call_summary(calls, None)
+
+
+def test_latest_prior_quote_takes_the_most_recent_quoted_call(monkeypatch):
+    calls = [
+        {"id": "c1", "dealer_id": "d1", "started_at": "2026-01-01T10:00:00Z"},
+        {"id": "c2", "dealer_id": "d1", "started_at": "2026-01-01T12:00:00Z"},
+    ]
+    _hist(monkeypatch, calls, {"c1": [{"monthly_rent": 151000}], "c2": [{"monthly_rent": 140000}]})
+
+    assert api._latest_prior_quote(calls)["monthly_rent"] == 140000
+
+
+def test_latest_prior_quote_falls_back_to_an_earlier_quoted_call(monkeypatch):
+    """A later call that produced nothing must not erase the quote we do have."""
+    calls = [
+        {"id": "c1", "dealer_id": "d1", "started_at": "2026-01-01T10:00:00Z"},
+        {"id": "c2", "dealer_id": "d1", "started_at": "2026-01-01T12:00:00Z"},
+    ]
+    _hist(monkeypatch, calls, {"c1": [{"monthly_rent": 151000}]})
+
+    assert api._latest_prior_quote(calls)["monthly_rent"] == 151000
+
+
+def test_prior_calls_excludes_other_dealers_and_the_current_call(monkeypatch):
+    calls = [
+        {"id": "c1", "dealer_id": "d1", "started_at": "2026-01-01T10:00:00Z"},
+        {"id": "c2", "dealer_id": "OTHER", "started_at": "2026-01-01T11:00:00Z"},
+        {"id": "c3", "dealer_id": "d1", "started_at": "2026-01-01T12:00:00Z"},
+    ]
+    monkeypatch.setattr(crud, "list_calls", lambda spec_id: calls)
+
+    ids = [c["id"] for c in api._prior_calls("s1", "d1", "c3")]
+
+    assert ids == ["c1"]  # other dealer excluded (honesty guardrail), current excluded
+
+
+def test_dealer_reuses_its_own_prior_numbers_on_a_later_call(monkeypatch):
+    """Regenerating per call meant a dealer who said 151,000 in round 1 said
+    something else in round 2, making the negotiator's leverage incoherent."""
+    spec = {"id": "s1", "spec_json": {"area_sqft": 900, "location": "Gulberg"}, "benchmark_json": None}
+    prior = {
+        "monthly_rent": 151000,
+        "advance_months": 2,
+        "commission": 151000,
+        "maintenance": 5000,
+        "annual_increment_pct": 5,
+    }
+
+    for _ in range(5):  # would drift if it were still random
+        v = api._dealer_dynamic_variables(spec, "firm", prior)
+        assert v["asking_rent"] == 151000
+        assert v["advance_months"] == 2
+        assert v["commission"] == 151000
+        assert v["maintenance"] == 5000
+        assert v["annual_increment_pct"] == 5
+        assert "already quoted these exact" in v["prior_call_note"]
+
+
+def test_dealer_generates_fresh_numbers_on_a_first_call():
+    spec = {"id": "s1", "spec_json": {"area_sqft": 900, "location": "Gulberg"}, "benchmark_json": None}
+
+    v = api._dealer_dynamic_variables(spec, "firm", None)
+
+    assert v["asking_rent"] > 0
+    assert "first call" in v["prior_call_note"]
+
+
+def test_negotiator_vars_carry_round_and_history():
+    spec = {"id": "s1", "spec_json": {"location": "Gulberg"}}
+
+    v = api._dynamic_variables(spec, "c9", "d1", round_number=2, prior_summary="They quoted 151,000.")
+
+    assert v["round_number"] == 2
+    assert v["prior_call_summary"] == "They quoted 151,000."
+
+
+def test_negotiator_vars_default_to_no_history():
+    spec = {"id": "s1", "spec_json": {"location": "Gulberg"}}
+
+    v = api._dynamic_variables(spec, "c1", "d1")
+
+    assert v["round_number"] == 1
+    assert "first call" in v["prior_call_summary"]

@@ -112,7 +112,39 @@ an item; delete resolved items instead of checking them off.
   quotes missing the fee fields in `get_leverage`/report ranking. Deliberately
   not done yet: it lands in `tools.py`, which is being actively edited.
 
+## MUST DO BEFORE THE NEXT LIVE CALL
+
+- **Re-run `uv run python -m app.make_agents` with live keys.** The call-history
+  work changed *prompts*, and prompts only reach the agents through the factory.
+  The negotiator prompt gained a `CALL HISTORY WITH THIS DEALER` block
+  (`{{round_number}}`, `{{prior_call_summary}}`) and all four persona prompts
+  gained `{{prior_call_note}}`. Until this is re-run, the backend will send the
+  new dynamic variables and the deployed agents will ignore them — the feature
+  will look broken while the code is correct.
+- **Confirm Render actually redeployed.** Same trap: a fix that is on `main` but
+  not deployed behaves exactly like a fix that doesn't work.
+
 ## Resolved
+
+- **Follow-up calls had no memory of the dealer** — two separate faults, both
+  fixed together because fixing either alone looks worse than fixing neither.
+  (1) The negotiator received no prior-call context, so it reopened every
+  follow-up cold and asked for a quote it already had. `_dynamic_variables` now
+  carries `round_number` and a `prior_call_summary` built from this dealer's own
+  last quote plus the tail of the last transcript. (2) `_dealer_dynamic_variables`
+  regenerated the persona's numbers from its band on *every* call, so a dealer
+  who said 151,000 in round 1 said something else in round 2. It now reuses the
+  dealer's own last logged quote verbatim and tells the persona to stand by it.
+  Scoped strictly to the dealer's own history — other dealers' bids remain
+  exclusively behind `get_leverage`, per the honesty guardrail; there is a test
+  asserting other dealers' calls are excluded.
+- **UI asserted "no numbers committed" about calls it knew nothing about** — when
+  the backend recorded no outcome (call never finalized, or the post-call webhook
+  never landed) the frontend defaulted to `callback`, whose label claims the
+  dealer committed no numbers. It now leaves the outcome undefined and shows
+  "Call ended — outcome not recorded yet". This is the likely explanation for the
+  screenshot where a dealer clearly quoted 151,000 and the chip still said no
+  numbers: the outcome was null, not wrong.
 
 - **Real quotes reported as "no numbers committed"** — `derive_outcome`
   classified a call by regex-scanning the dealer's transcript lines for a
