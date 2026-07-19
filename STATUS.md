@@ -1,6 +1,7 @@
 # STATUS
 
-## K9 roleplay panel (Owner A) — done on `call-center-ui` branch
+## K9 roleplay panel (Owner A) — done on `k9-roleplay` branch (new branch;
+`call-center-ui` was already merged to main for K9 v1)
 
 Roleplay promoted from fallback placeholder to primary demo call path (bridge
 is broken; roleplay is what judges see live). `lib/characterCards.ts` (4
