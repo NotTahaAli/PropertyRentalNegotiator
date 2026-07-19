@@ -213,6 +213,37 @@ export function useCallCenter(specId: string) {
     setRoleplayMap((prev) => ({ ...prev, [dealerId]: on }));
   }, []);
 
+  // Mock-only: instantly seeds a dealer as "done" for a given round, for the
+  // report's citation deep-link (?call=&line=) — same source data and same
+  // branch logic as runMockCall's completion, just synchronous instead of
+  // timer-driven. Never call this outside USE_MOCKS; there is no real-data
+  // equivalent, and faking a completed call in real mode would hide missing
+  // backend state instead of surfacing it.
+  const seedMockCompleted = useCallback(
+    (dealerId: string, round: number) => {
+      const dealer = dealers?.find((d) => d.id === dealerId);
+      if (!dealer) return;
+      const lines =
+        round >= 2
+          ? (MOCK_TRANSCRIPTS_ROUND2[dealer.persona] ?? MOCK_TRANSCRIPTS[dealer.persona])
+          : MOCK_TRANSCRIPTS[dealer.persona];
+      const outcome = MOCK_OUTCOMES[dealer.persona];
+      const quote =
+        round >= 2
+          ? (MOCK_QUOTES_ROUND2[dealer.persona] ?? MOCK_QUOTES[dealer.persona] ?? null)
+          : (MOCK_QUOTES[dealer.persona] ?? null);
+      patch(dealerId, {
+        state: "done",
+        round,
+        transcript: lines,
+        outcome,
+        quote,
+        recordingUrl: mockRecordingUrl(),
+      });
+    },
+    [dealers, patch]
+  );
+
   // a completed call bumps the next one to a leverage round; retries keep their round
   const nextRound = useCallback(
     (dealerId: string) => {
@@ -273,6 +304,7 @@ export function useCallCenter(specId: string) {
     roleplay,
     setRoleplay,
     finishRoleplaySession,
+    seedMockCompleted,
     stateFor: (dealerId: string): DealerCallState => calls[dealerId] ?? IDLE,
   };
 }

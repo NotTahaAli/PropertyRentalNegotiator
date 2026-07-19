@@ -4,6 +4,7 @@ import type {
   JobSpec,
   ParsedDoc,
   Quote,
+  Report,
   TranscriptLine,
 } from "./types";
 
@@ -189,6 +190,8 @@ export const MOCK_QUOTES: Partial<Record<Dealer["persona"], Quote>> = {
     monthly_rent: 65000, advance_months: 2, commission: 32500, maintenance: 3000,
     annual_increment_pct: 5, total_first_year: 998500, binding: false,
     notes: "No written agreement offered; wants token money first.",
+    flagged: true,
+    flag_reason: "Quoted ~40% under benchmark with no written agreement offered — confirm scope before trusting this number.",
   },
   upseller: {
     id: "quote_upseller", call_id: "call_upseller", dealer_id: "dealer_upseller",
@@ -214,6 +217,48 @@ export const MOCK_QUOTES_ROUND2: Partial<Record<Dealer["persona"], Quote>> = {
     annual_increment_pct: 5, total_first_year: 1460000, binding: true,
     notes: "Round 2: matched a documented 65,000 competing offer — rent trimmed 110k→100k, commission fully waived.",
   },
+};
+
+// ── K10 Report mock — final-round-per-dealer snapshot of the 2-round demo.
+// call_number = MOCK_DEALERS index+1 (stonewaller=1, lowballer=2, upseller=3,
+// firm=4); citation_line points into MOCK_TRANSCRIPTS_ROUND2 for the dealers
+// that reached round 2. Stonewaller never gets a round-2 callback — a dealer
+// who already said the unit is rented doesn't get redialed — so its final
+// round is 1, per the round-1 decline transcript.
+export const MOCK_REPORT: Report = {
+  spec_id: "spec_mock_001",
+  rows: [
+    {
+      dealer_id: "dealer_firm", dealer_name: "Firm Dealer", persona: "firm",
+      rank: 1, quote: MOCK_QUOTES_ROUND2.firm ?? null, round: 2, outcome: "quote",
+      call_number: 4, citation_line: 4, recording_url: mockRecordingUrl(),
+    },
+    {
+      dealer_id: "dealer_upseller", dealer_name: "Upseller Dealer", persona: "upseller",
+      rank: 2, quote: MOCK_QUOTES.upseller ?? null, round: 2, outcome: "quote",
+      call_number: 3, citation_line: 1, recording_url: mockRecordingUrl(),
+    },
+    {
+      dealer_id: "dealer_lowballer", dealer_name: "Lowballer Dealer", persona: "lowballer",
+      rank: 3, quote: MOCK_QUOTES.lowballer ?? null, round: 2, outcome: "quote",
+      call_number: 2, citation_line: 1, recording_url: mockRecordingUrl(),
+    },
+    {
+      dealer_id: "dealer_stonewaller", dealer_name: "Stonewaller Dealer", persona: "stonewaller",
+      rank: null, quote: null, round: 1, outcome: "declined",
+      call_number: 1, citation_line: 1, recording_url: mockRecordingUrl(),
+    },
+  ],
+  recommended_dealer_id: "dealer_firm",
+  recommendation_text:
+    "Firm-but-Fair offers the best verified deal at PKR 1,460,000 for the first year. " +
+    "On the first call it quoted a fair, fully itemised 110,000/month with standard terms. " +
+    "On the follow-up call, once the Negotiator raised a real logged offer of 65,000/month from " +
+    "another dealer, Firm-but-Fair matched it in spirit — trimming rent to 100,000/month and " +
+    "fully waiving the commission — a concession only possible because of leverage the agent " +
+    "actually gathered, not a scripted discount. Lowballer's headline number is lower, but it's " +
+    "flagged: quoted far enough under benchmark to warrant scrutiny, with no written agreement " +
+    "offered, so it is not recommended as the top pick despite the number.",
 };
 
 // 0.5s of silent 16-bit mono PCM as a WAV blob URL — placeholder recording.

@@ -3,12 +3,22 @@
 import { useEffect, useRef } from "react";
 import type { TranscriptLine } from "@/lib/types";
 
-export default function TranscriptStream({ lines }: { lines: TranscriptLine[] }) {
+interface TranscriptStreamProps {
+  lines: TranscriptLine[];
+  highlightLine?: number; // deep-linked from a report citation — scrolls + highlights this line
+}
+
+export default function TranscriptStream({ lines, highlightLine }: TranscriptStreamProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (highlightLine != null) {
+      highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [lines.length]);
+  }, [lines.length, highlightLine]);
 
   if (lines.length === 0) {
     return (
@@ -22,7 +32,13 @@ export default function TranscriptStream({ lines }: { lines: TranscriptLine[] })
     <div className="max-h-80 overflow-y-auto pr-1">
       <div className="flex flex-col gap-2.5">
         {lines.map((l) => (
-          <div key={l.line} className="anim-fade-in flex gap-2.5 text-sm">
+          <div
+            key={l.line}
+            ref={l.line === highlightLine ? highlightRef : undefined}
+            className={`anim-fade-in flex gap-2.5 rounded-md text-sm ${
+              l.line === highlightLine ? "-mx-2 bg-accent-dim px-2 py-1.5" : ""
+            }`}
+          >
             <span className="shrink-0 pt-0.5 font-mono text-[10px] tabular-nums text-text-dim">
               [{l.line}]
             </span>

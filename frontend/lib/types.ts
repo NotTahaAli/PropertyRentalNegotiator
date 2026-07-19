@@ -147,6 +147,30 @@ export interface Quote {
   flag_reason?: string | null;
 }
 
+// ── K10 Report — reuses Quote/CallOutcome/Persona as-is, no forking ──
+
+export interface ReportRow {
+  dealer_id: string;
+  dealer_name: string;
+  persona: Persona;
+  rank: number | null; // null only for declined/no-quote dealers — never omitted, just unranked
+  quote: Quote | null;
+  round: number;
+  outcome: CallOutcome;
+  call_number: number; // stable 1-based citation number — MOCK_DEALERS index+1 in mock mode
+  citation_line: number; // line in that call's transcript this row's claim is backed by
+  recording_url?: string | null;
+}
+
+export interface Report {
+  spec_id: string;
+  rows: ReportRow[];
+  recommended_dealer_id: string;
+  recommendation_text: string;
+  // no separate citation field — RecommendationBlock reads call_number/citation_line
+  // off the recommended row itself, so the table and the recommendation can't drift apart.
+}
+
 export interface CallStartResponse {
   call_id: string;
   status?: CallStatus;

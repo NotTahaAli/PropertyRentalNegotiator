@@ -1,5 +1,57 @@
 # STATUS
 
+## Branch state (Owner A)
+
+`k9-roleplay` pushed to origin (round-2 leverage mock + roleplay panel).
+Mock-verified; real mode blocked on CORS/C. `k10-report` branched off
+`k9-roleplay`, in progress (see below) — not yet merged anywhere.
+
+## K10 Report UI (Owner A) — done on `k10-report` branch
+
+`GET /report/{spec_id}` doesn't exist on the backend yet (K10 gen is C's
+half, still "Not started" per the plan doc) — built the mock to master
+plan §304/§406/§414/§415: ranked by `total_first_year`, flags with reasons,
+recommended deal, plain-language why, `[call N, line M]` citations,
+recording links. `lib/types.ts` adds `ReportRow`/`Report`, reusing
+`Quote`/`CallOutcome`/`Persona` as-is — no forking. `lib/api.ts` adds
+`getReport()`; 404/down surfaces the same clean-error pattern K9 uses for
+`dealersError`.
+
+Mock snapshot (`MOCK_REPORT` in `mocks.ts`) is the final-round-per-dealer
+state of the 2-round demo: Firm-but-Fair rank 1 at the round-2 leveraged
+1,460,000 (leverage story: cites Lowballer's real 65,000/mo round-1 quote,
+trims rent 110k→100k, waives commission), Upseller rank 2 at its actual
+total, Lowballer rank 3 — flagged (reused `Quote.flagged`/`flag_reason`,
+no parallel lookup table) and explicitly ranked *last* despite the lowest
+headline number, not omitted. Stonewaller: `rank: null`, shown separately
+as declined (round 1 — a dealer who already said the unit's rented doesn't
+get redialed, so it never reaches round 2 in this snapshot).
+
+Citation integrity: table and recommendation used to risk citing two
+different `[call N, line M]` guesses. Fixed at the type level — `Report`
+has no separate citation field; `RecommendationBlock` looks up the
+recommended row and reads `call_number`/`citation_line` off *it*, so the
+two can't drift apart structurally, not just by convention.
+
+K9 addition (`app/calls/[spec_id]/page.tsx`): reads `?call=&line=` from a
+citation click, maps `call` (1-based) to `MOCK_DEALERS[call-1]`, selects
+that dealer, and highlights the line in `TranscriptStream` (new
+`highlightLine` prop, scroll+pulse). The synchronous "seed this dealer as
+already-done" behavior (`useCallCenter.seedMockCompleted`) is gated
+`if (!USE_MOCKS) return` — real mode only selects/highlights against
+whatever real data actually exists; it never fabricates a completed call.
+Components: `components/report/{RankedTable,FlagChip,RecommendationBlock,
+CitationLink,PriceCell}.tsx`, all new, all under 200 lines. `app/report/`
+layout mirrors `calls/layout.tsx` (Protected-wrapped). Print: `print:`
+Tailwind variants on the report layout/header (white bg, hide nav).
+
+Verified: `tsc --noEmit`, `eslint .`, `next build` clean (`ƒ
+/report/[spec_id]` present). Not yet done: browser click-through
+(citation round-trip, 375px, print-preview) — next session should smoke
+test before merge. Assumption flagged: the `call` number → dealer mapping
+is mock-only (`MOCK_DEALERS` index); real mode has no backend-assigned
+call numbering yet, that's C's K10-gen territory whenever it ships.
+
 ## K9 roleplay panel (Owner A) — done on `k9-roleplay` branch (new branch;
 `call-center-ui` was already merged to main for K9 v1)
 

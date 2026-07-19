@@ -7,11 +7,13 @@ import type {
   ParsedDoc,
   Persona,
   Quote,
+  Report,
 } from "./types";
 import {
   MOCK_DEALERS,
   MOCK_PARSE_RENT_AGREEMENT,
   MOCK_PARSE_REQUIREMENTS,
+  MOCK_REPORT,
 } from "./mocks";
 import { getAccessToken } from "@/components/auth/AuthProvider";
 
@@ -135,4 +137,16 @@ export async function getRecordingUrl(callId: string): Promise<string | null> {
 
 export async function listQuotes(callId: string): Promise<Quote[]> {
   return getJson(`/quotes?call_id=${encodeURIComponent(callId)}`);
+}
+
+// ── K10 Report ──
+
+export async function getReport(specId: string): Promise<Report> {
+  if (USE_MOCKS) {
+    await new Promise((r) => setTimeout(r, 500));
+    return MOCK_REPORT;
+  }
+  // K10 report generation isn't built on the backend yet — this 404s until
+  // it ships; the report page surfaces that as a clean "not available" state.
+  return getJson(`/report/${encodeURIComponent(specId)}`);
 }

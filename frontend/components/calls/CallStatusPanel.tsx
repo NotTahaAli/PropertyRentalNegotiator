@@ -52,6 +52,7 @@ interface CallStatusPanelProps {
   callState: DealerCallState;
   roleplay: boolean;
   onRoleplaySessionEnded: () => void;
+  highlightLine?: number;
 }
 
 export default function CallStatusPanel({
@@ -59,6 +60,7 @@ export default function CallStatusPanel({
   callState,
   roleplay,
   onRoleplaySessionEnded,
+  highlightLine,
 }: CallStatusPanelProps) {
   if (!dealer) {
     return (
@@ -141,7 +143,7 @@ export default function CallStatusPanel({
           </p>
         )}
         {(state === "live" || state === "done" || state === "failed") && (
-          <TranscriptStream lines={transcript} />
+          <TranscriptStream lines={transcript} highlightLine={highlightLine} />
         )}
       </div>
 

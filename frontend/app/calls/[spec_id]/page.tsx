@@ -1,14 +1,19 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useEffect } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DealerCard from "@/components/calls/DealerCard";
 import CallStatusPanel from "@/components/calls/CallStatusPanel";
+import { MOCK_DEALERS, MOCK_REPORT } from "@/lib/mocks";
 import { useCallCenter } from "@/lib/useCallCenter";
+
+const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
 export default function CallCenterPage() {
   const params = useParams<{ spec_id: string }>();
   const specId = params.spec_id;
+  const searchParams = useSearchParams();
   const {
     dealers,
     dealersError,
@@ -20,8 +25,29 @@ export default function CallCenterPage() {
     roleplay,
     setRoleplay,
     finishRoleplaySession,
+    seedMockCompleted,
     stateFor,
   } = useCallCenter(specId);
+
+  // Report citation deep-link: ?call=<1-based dealer index>&line=<n>. Seeding
+  // a canned completed call only ever happens under USE_MOCKS — in real mode
+  // this just selects the dealer (if resolvable) and highlights the line if
+  // it's already in whatever transcript is really there; it never invents one.
+  const callParam = searchParams.get("call");
+  const lineParam = searchParams.get("line");
+  const highlightLine = lineParam ? Number(lineParam) : undefined;
+
+  useEffect(() => {
+    if (!USE_MOCKS || !callParam || !dealers) return;
+    const dealer = MOCK_DEALERS[Number(callParam) - 1];
+    if (!dealer) return;
+    select(dealer.id);
+    if (stateFor(dealer.id).state === "idle") {
+      const row = MOCK_REPORT.rows.find((r) => r.dealer_id === dealer.id);
+      seedMockCompleted(dealer.id, row?.round ?? 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callParam, dealers]);
 
   const anyIdle = dealers?.some((d) => {
     const s = stateFor(d.id).state;
@@ -93,6 +119,7 @@ export default function CallCenterPage() {
               callState={selectedDealer ? stateFor(selectedDealer.id) : { state: "idle", transcript: [] }}
               roleplay={selectedDealer ? !!roleplay[selectedDealer.id] : false}
               onRoleplaySessionEnded={() => selectedDealer && finishRoleplaySession(selectedDealer.id)}
+              highlightLine={highlightLine}
             />
           </div>
         </div>
