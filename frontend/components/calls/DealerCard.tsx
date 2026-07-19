@@ -103,7 +103,7 @@ export default function DealerCard({
           ) : outcome === "declined" ? (
             <span className="text-error">Declined — unit not available</span>
           ) : (
-            <span className="text-text-secondary">Ended: {outcome ?? "callback"}</span>
+            <span className="text-text-secondary">Ended: {outcome ?? "not recorded"}</span>
           )}
         </p>
       )}

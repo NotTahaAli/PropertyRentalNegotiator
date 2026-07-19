@@ -187,7 +187,10 @@ export function useCallCenter(specId: string) {
             // Quotes we actually fetched outrank the stored outcome. Without
             // this, a call that produced a real itemised quote could still show
             // "Dealer asked for a callback — no numbers committed".
-            outcome: quotes && quotes.length > 0 ? "quote" : call.outcome ?? "callback",
+            // Leave undefined when the backend recorded no outcome. Defaulting to
+            // "callback" made the UI assert "no numbers committed" about a call it
+            // knows nothing about — a claim it can't back.
+            outcome: quotes && quotes.length > 0 ? "quote" : call.outcome ?? undefined,
             ...(quotes !== undefined ? { quotes } : {}),
             recordingUrl,
           });
@@ -261,7 +264,7 @@ export function useCallCenter(specId: string) {
               ? "failed"
               : quotes.length > 0
                 ? "quote"
-                : c.outcome ?? "callback",
+                : c.outcome ?? undefined,
           quotes,
           recordingUrl,
         });

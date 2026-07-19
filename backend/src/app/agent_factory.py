@@ -35,6 +35,14 @@ def build_negotiator_prompt(config: VerticalConfig) -> str:
         marker = "" if spec_field.required else " (if known)"
         lines.append(f"{name}: {{{{{name}}}}}{marker}")
     lines.append("currency: {{currency}}")
+    # Call history: the dealer's OWN prior quote and how the last call ended.
+    # Without this the agent re-opens every follow-up from scratch and asks a
+    # dealer to repeat a quote it already gave. Deliberately scoped to this one
+    # dealer — competing bids stay behind get_leverage, see the honesty guardrail.
+    lines.append("")
+    lines.append("--- CALL HISTORY WITH THIS DEALER ---")
+    lines.append("This is call number {{round_number}} with them.")
+    lines.append("{{prior_call_summary}}")
     return config.negotiator_prompt + "\n\n" + "\n".join(lines)
 
 
