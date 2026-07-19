@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -20,6 +21,7 @@ from pydantic import BaseModel
 
 from . import crud, live, storage
 from .auth import _decode, get_current_user_id
+from .benchmark import discover_dealers, fetch_benchmark
 from .bridge import derive_outcome, run_bridge
 from .seed import seed_dealers
 from .vertical import load_vertical
@@ -41,6 +43,10 @@ class DealerCreate(BaseModel):
     persona: str
     phone_label: Optional[str] = None
     source: Optional[str] = None
+
+
+class DealerUpdate(BaseModel):
+    persona: str
 
 
 class CallCreate(BaseModel):
@@ -118,9 +124,22 @@ webhooks_router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 def create_spec(
     body: SpecCreate, user_id: str = Depends(get_current_user_id)
 ) -> dict[str, Any]:
-    spec = crud.create_spec({**body.model_dump(), "user_id": user_id})
+    row = {**body.model_dump(), "user_id": user_id}
+    location = body.spec_json.get("location")
+    discovered: list[dict[str, Any]] = []
+    if location:
+        # ponytail: blocking Tavily+OpenAI adds ~3-8s to spec create; queue it if that ever matters
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            bench = None if body.benchmark_json else pool.submit(fetch_benchmark, location)
+            deals = pool.submit(discover_dealers, location)
+            if bench is not None:
+                row["benchmark_json"] = bench.result()
+            discovered = deals.result()
+    spec = crud.create_spec(row)
     dealers = seed_dealers(spec["id"])
-    return {**spec, "dealers_seeded": len(dealers)}
+    for dealer in discovered:
+        crud.create_dealer({**dealer, "spec_id": spec["id"]})
+    return {**spec, "dealers_seeded": len(dealers), "dealers_discovered": len(discovered)}
 
 
 @specs_router.get("/{id}")
@@ -148,6 +167,18 @@ def get_dealer(
     dealer = _get_or_404(crud.get_dealer(id))
     _require_spec_owner(dealer["spec_id"], user_id)
     return dealer
+
+
+@dealers_router.patch("/{id}")
+def update_dealer(
+    id: str, body: DealerUpdate, user_id: str = Depends(get_current_user_id)
+) -> dict[str, Any]:
+    dealer = _get_or_404(crud.get_dealer(id))
+    _require_spec_owner(dealer["spec_id"], user_id)
+    valid_personas = set(load_vertical().persona_prompts) | {"human"}
+    if body.persona not in valid_personas:
+        raise HTTPException(status_code=422, detail=f"persona must be one of {sorted(valid_personas)}")
+    return crud.update_dealer(id, {"persona": body.persona})
 
 
 @dealers_router.get("")
@@ -204,6 +235,11 @@ async def start_call(
     dealer = _get_or_404(crud.get_dealer(body.dealer_id))
     if dealer["spec_id"] != body.spec_id:
         raise HTTPException(status_code=404, detail="not found")
+    if body.mode != "roleplay" and dealer["persona"] not in _agent_manifest():
+        raise HTTPException(
+            status_code=422,
+            detail="dealer persona has no agent; assign a persona or use roleplay mode",
+        )
 
     call = crud.create_call(
         {

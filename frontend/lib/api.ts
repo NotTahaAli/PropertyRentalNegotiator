@@ -5,6 +5,7 @@ import type {
   IntakeSubmitResponse,
   JobSpec,
   ParsedDoc,
+  Persona,
   Quote,
 } from "./types";
 import {
@@ -47,7 +48,7 @@ export async function parseDoc(
 export async function submitSpec(spec: JobSpec): Promise<IntakeSubmitResponse> {
   if (USE_MOCKS) {
     await new Promise((r) => setTimeout(r, 600));
-    return { spec_id: "spec_mock_001", dealers_seeded: 4 };
+    return { spec_id: "spec_mock_001", dealers_seeded: 4, dealers_discovered: 1 };
   }
   // Backend SpecCreate wants {vertical, status, spec_json, confirmed};
   // it returns the spec row plus dealers_seeded (one dealer per persona).
@@ -63,7 +64,11 @@ export async function submitSpec(spec: JobSpec): Promise<IntakeSubmitResponse> {
   });
   if (!r.ok) throw new Error(`submit failed: ${r.status}`);
   const row = await r.json();
-  return { spec_id: row.id, dealers_seeded: row.dealers_seeded ?? 0 };
+  return {
+    spec_id: row.id,
+    dealers_seeded: row.dealers_seeded ?? 0,
+    dealers_discovered: row.dealers_discovered ?? 0,
+  };
 }
 
 // ── K9 Call Center (mock lifecycle itself lives in lib/useCallCenter.ts) ──
@@ -80,6 +85,26 @@ export async function listDealers(specId: string): Promise<Dealer[]> {
     return MOCK_DEALERS;
   }
   return getJson(`/dealers?spec_id=${encodeURIComponent(specId)}`);
+}
+
+export async function updateDealer(
+  dealerId: string,
+  persona: Persona
+): Promise<Dealer> {
+  if (USE_MOCKS) {
+    await new Promise((r) => setTimeout(r, 300));
+    const dealer = MOCK_DEALERS.find((d) => d.id === dealerId);
+    if (!dealer) throw new Error("dealer not found");
+    dealer.persona = persona;
+    return { ...dealer };
+  }
+  const r = await fetch(`${BASE}/dealers/${encodeURIComponent(dealerId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ persona }),
+  });
+  if (!r.ok) throw new Error(`update dealer failed: ${r.status}`);
+  return r.json();
 }
 
 export async function startCall(

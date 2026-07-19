@@ -3,6 +3,7 @@ import hmac
 import json
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import api, crud
@@ -411,6 +412,23 @@ def test_start_call_bridge_mode_actually_schedules_a_real_asyncio_task(monkeypat
     assert response.json() == {"call_id": "call-real", "status": "running"}
 
 
+def test_start_call_bridge_rejects_human_persona(monkeypatch):
+    monkeypatch.setattr(
+        crud,
+        "get_spec",
+        lambda id: {"id": "s1", "user_id": USER_A, "spec_json": {"area_sqft": 500}},
+    )
+    monkeypatch.setattr(
+        crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1", "persona": "human"}
+    )
+    monkeypatch.setattr(crud, "create_call", lambda row: pytest.fail("call row created"))
+    _as(USER_A)
+
+    response = client.post("/calls/start", json={"spec_id": "s1", "dealer_id": "d1"})
+
+    assert response.status_code == 422
+
+
 def test_start_call_404_for_non_owner(monkeypatch):
     monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
     _as(USER_B)
@@ -542,6 +560,149 @@ def test_post_call_webhook_acks_events_without_call_id(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"status": "ignored"}
     assert updates == []
+
+
+def _mute_discovery(monkeypatch):
+    monkeypatch.setattr(api, "fetch_benchmark", lambda location: None)
+    monkeypatch.setattr(api, "discover_dealers", lambda location: [])
+
+
+def test_create_spec_caches_fetched_benchmark(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(crud, "create_spec", lambda row: captured.update(row) or {"id": "s1", **row})
+    monkeypatch.setattr(crud, "create_dealer", lambda row: {"id": "d", **row})
+    monkeypatch.setattr(
+        api, "fetch_benchmark", lambda location: {"per_sqft_low": 210, "per_sqft_high": 390}
+    )
+    monkeypatch.setattr(api, "discover_dealers", lambda location: [])
+    _as(USER_A)
+
+    response = client.post(
+        "/specs",
+        json={"vertical": "shop_rental", "status": "draft", "spec_json": {"location": "Gulberg"}},
+    )
+
+    assert response.status_code == 200
+    assert captured["benchmark_json"] == {"per_sqft_low": 210, "per_sqft_high": 390}
+
+
+def test_create_spec_body_benchmark_wins_over_fetch(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(crud, "create_spec", lambda row: captured.update(row) or {"id": "s1", **row})
+    monkeypatch.setattr(crud, "create_dealer", lambda row: {"id": "d", **row})
+    monkeypatch.setattr(
+        api, "fetch_benchmark", lambda location: pytest.fail("fetched despite body value")
+    )
+    monkeypatch.setattr(api, "discover_dealers", lambda location: [])
+    _as(USER_A)
+
+    response = client.post(
+        "/specs",
+        json={
+            "vertical": "shop_rental",
+            "status": "draft",
+            "spec_json": {"location": "Gulberg"},
+            "benchmark_json": {"per_sqft_low": 100, "per_sqft_high": 200},
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["benchmark_json"] == {"per_sqft_low": 100, "per_sqft_high": 200}
+
+
+def test_create_spec_inserts_discovered_dealers(monkeypatch):
+    created = []
+    monkeypatch.setattr(crud, "create_spec", lambda row: {"id": "s1", **row})
+
+    def fake_create_dealer(row):
+        created.append(row)
+        return {"id": f"d{len(created)}", **row}
+
+    monkeypatch.setattr(crud, "create_dealer", fake_create_dealer)
+    monkeypatch.setattr(api, "fetch_benchmark", lambda location: None)
+    monkeypatch.setattr(
+        api,
+        "discover_dealers",
+        lambda location: [
+            {"name": "Alpha Estate", "persona": "human", "phone_label": "https://alpha.pk", "source": "tavily"}
+        ],
+    )
+    _as(USER_A)
+
+    response = client.post(
+        "/specs",
+        json={"vertical": "shop_rental", "status": "draft", "spec_json": {"location": "Gulberg"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["dealers_discovered"] == 1
+    tavily_rows = [d for d in created if d.get("source") == "tavily"]
+    assert len(tavily_rows) == 1
+    assert tavily_rows[0]["persona"] == "human"
+    assert tavily_rows[0]["spec_id"] == "s1"
+    # seeded personas still present
+    assert len(created) > 1
+
+
+def test_create_spec_without_location_skips_discovery(monkeypatch):
+    monkeypatch.setattr(crud, "create_spec", lambda row: {"id": "s1", **row})
+    monkeypatch.setattr(crud, "create_dealer", lambda row: {"id": "d", **row})
+    monkeypatch.setattr(
+        api, "fetch_benchmark", lambda location: pytest.fail("fetched without location")
+    )
+    monkeypatch.setattr(
+        api, "discover_dealers", lambda location: pytest.fail("discovered without location")
+    )
+    _as(USER_A)
+
+    response = client.post(
+        "/specs", json={"vertical": "shop_rental", "status": "draft", "spec_json": {}}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["dealers_discovered"] == 0
+
+
+def test_patch_dealer_updates_persona(monkeypatch):
+    monkeypatch.setattr(crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1", "persona": "human"})
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    updates = {}
+
+    def fake_update_dealer(id, fields):
+        updates.update({"id": id, **fields})
+        return {"id": id, "spec_id": "s1", **fields}
+
+    monkeypatch.setattr(crud, "update_dealer", fake_update_dealer)
+    _as(USER_A)
+
+    response = client.patch("/dealers/d1", json={"persona": "firm"})
+
+    assert response.status_code == 200
+    assert updates == {"id": "d1", "persona": "firm"}
+    assert response.json()["persona"] == "firm"
+
+
+def test_patch_dealer_rejects_unknown_persona(monkeypatch):
+    monkeypatch.setattr(crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1"})
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    monkeypatch.setattr(
+        crud, "update_dealer", lambda id, fields: pytest.fail("updated invalid persona")
+    )
+    _as(USER_A)
+
+    response = client.patch("/dealers/d1", json={"persona": "robot"})
+
+    assert response.status_code == 422
+
+
+def test_patch_dealer_404s_for_non_owner(monkeypatch):
+    monkeypatch.setattr(crud, "get_dealer", lambda id: {"id": "d1", "spec_id": "s1"})
+    monkeypatch.setattr(crud, "get_spec", lambda id: {"id": "s1", "user_id": USER_A})
+    _as(USER_B)
+
+    response = client.patch("/dealers/d1", json={"persona": "firm"})
+
+    assert response.status_code == 404
 
 
 def test_recording_endpoint_owner_only(monkeypatch):

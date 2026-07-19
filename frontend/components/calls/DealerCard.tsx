@@ -4,7 +4,7 @@ import { useState } from "react";
 import Button from "@/components/ui/Button";
 import StateBadge from "./StateBadge";
 import { PERSONA_HINTS } from "@/lib/mocks";
-import type { Dealer } from "@/lib/types";
+import { PERSONAS, type Dealer, type Persona } from "@/lib/types";
 import type { DealerCallState } from "@/lib/useCallCenter";
 
 interface DealerCardProps {
@@ -13,6 +13,7 @@ interface DealerCardProps {
   selected: boolean;
   onSelect: () => void;
   onCall: () => void;
+  onPersonaChange: (persona: Persona) => void;
 }
 
 export default function DealerCard({
@@ -21,10 +22,13 @@ export default function DealerCard({
   selected,
   onSelect,
   onCall,
+  onPersonaChange,
 }: DealerCardProps) {
   const [roleplay, setRoleplay] = useState(false);
   const { state, outcome, quote } = callState;
   const busy = state === "calling" || state === "live";
+  // "human" has no ElevenLabs agent — bridge calls need a persona assigned first
+  const noBridgeAgent = dealer.persona === "human";
 
   return (
     <div
@@ -37,6 +41,11 @@ export default function DealerCard({
         <div className="min-w-0">
           <p className="truncate font-display text-sm font-semibold text-text">
             {dealer.name}
+            {dealer.source === "tavily" && (
+              <span className="ml-2 rounded bg-elevated px-1.5 py-0.5 font-mono text-[9px] font-normal tracking-wider text-text-dim">
+                DISCOVERED
+              </span>
+            )}
           </p>
           <p className="mt-0.5 text-xs text-text-secondary">
             {PERSONA_HINTS[dealer.persona]}
@@ -44,6 +53,24 @@ export default function DealerCard({
           {dealer.phone_label && (
             <p className="mt-1 font-mono text-[10px] text-text-dim">{dealer.phone_label}</p>
           )}
+          <label
+            className="mt-2 flex items-center gap-2 text-[11px] text-text-secondary"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Persona
+            <select
+              value={dealer.persona}
+              disabled={busy}
+              onChange={(e) => onPersonaChange(e.target.value as Persona)}
+              className="rounded border border-border bg-elevated px-1.5 py-0.5 font-mono text-[11px] text-text"
+            >
+              {PERSONAS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <StateBadge state={state} />
       </div>
@@ -70,7 +97,8 @@ export default function DealerCard({
         <Button
           variant={state === "done" ? "secondary" : "primary"}
           className="px-4 py-1.5 text-xs"
-          disabled={busy || roleplay}
+          disabled={busy || roleplay || noBridgeAgent}
+          title={noBridgeAgent ? "Assign a persona to bridge-call, or use role-play" : undefined}
           onClick={(e) => {
             e.stopPropagation();
             onCall();

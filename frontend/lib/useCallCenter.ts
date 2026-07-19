@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getCall, getRecordingUrl, listDealers, listQuotes, startCall } from "./api";
+import { getCall, getRecordingUrl, listDealers, listQuotes, startCall, updateDealer } from "./api";
 import { MOCK_OUTCOMES, MOCK_QUOTES, MOCK_TRANSCRIPTS, mockRecordingUrl } from "./mocks";
-import type { CallOutcome, Dealer, Quote, TranscriptLine, UiCallState } from "./types";
+import type { CallOutcome, Dealer, Persona, Quote, TranscriptLine, UiCallState } from "./types";
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
@@ -164,6 +164,16 @@ export function useCallCenter(specId: string) {
     [dealers, calls, clearTimers, runMockCall, runRealCall]
   );
 
+  const setPersona = useCallback(
+    async (dealerId: string, persona: Persona) => {
+      const updated = await updateDealer(dealerId, persona);
+      setDealers((prev) =>
+        prev?.map((d) => (d.id === dealerId ? { ...d, persona: updated.persona } : d)) ?? prev
+      );
+    },
+    []
+  );
+
   const callAll = useCallback(() => {
     dealers?.forEach((d) => {
       const s = calls[d.id]?.state ?? "idle";
@@ -182,6 +192,7 @@ export function useCallCenter(specId: string) {
     select: setSelected,
     call,
     callAll,
+    setPersona,
     stateFor: (dealerId: string): DealerCallState => calls[dealerId] ?? IDLE,
   };
 }

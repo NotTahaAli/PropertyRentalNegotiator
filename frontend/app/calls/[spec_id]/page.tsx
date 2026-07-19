@@ -9,7 +9,7 @@ import { useCallCenter } from "@/lib/useCallCenter";
 export default function CallCenterPage() {
   const params = useParams<{ spec_id: string }>();
   const specId = params.spec_id;
-  const { dealers, dealersError, selected, select, call, callAll, stateFor } =
+  const { dealers, dealersError, selected, select, call, callAll, setPersona, stateFor } =
     useCallCenter(specId);
 
   const anyIdle = dealers?.some((d) => {
@@ -70,6 +70,7 @@ export default function CallCenterPage() {
                 selected={selected === d.id}
                 onSelect={() => select(d.id)}
                 onCall={() => call(d.id)}
+                onPersonaChange={(p) => void setPersona(d.id, p)}
               />
             ))}
           </div>

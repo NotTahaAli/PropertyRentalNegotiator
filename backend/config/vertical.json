@@ -69,6 +69,7 @@
     "annual_increment_pct": "Annual rent increment, as a percentage."
   },
   "benchmark_query": "average shop rent per sqft {location} Pakistan zameen 2026",
+  "dealer_search_query": "property dealers estate agents commercial shops {location} Pakistan contact",
   "benchmark_fallback": {
     "per_sqft_low": 180,
     "per_sqft_high": 450

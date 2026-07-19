@@ -19,6 +19,16 @@ an item; delete resolved items instead of checking them off.
   `https://negotiator-backend.onrender.com/webhooks/post-call`, then set the
   generated secret as `ELEVENLABS_WEBHOOK_SECRET` locally and on Render.
 
+## Blocked: K7 live verification
+
+- **`TAVILY_API_KEY` not set anywhere** — K7 benchmark fetch + dealer
+  discovery fail soft (null benchmark, no discovered dealers) until the key
+  is set locally and on Render. Then live-verify: `POST /specs` with a real
+  location (e.g. "Gulberg Lahore"), check the Supabase row's
+  `benchmark_json` has `{per_sqft_low, per_sqft_high}`, tavily dealer rows
+  exist (`persona="human"`), and `POST /tools/get_benchmark` returns
+  `source: "cached"`.
+
 ## Blocked: K5 dealer persona doesn't verbally reply to relayed audio
 
 Live-tested against real ElevenLabs agents. Connection-health bug is fixed;

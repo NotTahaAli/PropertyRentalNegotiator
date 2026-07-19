@@ -47,6 +47,10 @@ def list_dealers(**filters: Any) -> list[dict[str, Any]]:
     return _list("dealers", **filters)
 
 
+def update_dealer(id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    return _update("dealers", id, fields)
+
+
 def create_call(row: dict[str, Any]) -> dict[str, Any]:
     return _create("calls", row)
 

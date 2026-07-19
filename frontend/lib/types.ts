@@ -83,11 +83,20 @@ export interface ParsedDoc {
 export interface IntakeSubmitResponse {
   spec_id: string;
   dealers_seeded: number;
+  dealers_discovered?: number;
 }
 
 // ── K9 Call Center — mirrors backend calls/quotes/dealers shapes ──
 
-export type Persona = "stonewaller" | "lowballer" | "upseller" | "firm";
+export type Persona = "stonewaller" | "lowballer" | "upseller" | "firm" | "human";
+
+export const PERSONAS: readonly Persona[] = [
+  "stonewaller",
+  "lowballer",
+  "upseller",
+  "firm",
+  "human",
+];
 
 export interface Dealer {
   id: string;

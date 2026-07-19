@@ -47,6 +47,7 @@ class VerticalConfig(BaseModel):
     spec_schema: dict[str, SpecField]
     fee_taxonomy: list[str]
     benchmark_query: str
+    dealer_search_query: str
     benchmark_fallback: BenchmarkFallback
     red_flags: list[RedFlag]
     negotiation_levers: list[str]

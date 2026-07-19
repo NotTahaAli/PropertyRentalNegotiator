@@ -62,6 +62,8 @@ export const MOCK_DEALERS: Dealer[] = [
   { id: "dealer_lowballer", spec_id: "spec_mock_001", name: "Lowballer Dealer", persona: "lowballer", phone_label: "Dealer (lowballer)", source: "seed" },
   { id: "dealer_upseller", spec_id: "spec_mock_001", name: "Upseller Dealer", persona: "upseller", phone_label: "Dealer (upseller)", source: "seed" },
   { id: "dealer_firm", spec_id: "spec_mock_001", name: "Firm Dealer", persona: "firm", phone_label: "Dealer (firm)", source: "seed" },
+  // K7 dealer discovery — real dealers found via Tavily land with persona "human"
+  { id: "dealer_tavily_alpha", spec_id: "spec_mock_001", name: "Alpha Estate & Builders", persona: "human", phone_label: "https://alpha-estate.pk", source: "tavily" },
 ];
 
 export const PERSONA_HINTS: Record<Dealer["persona"], string> = {
@@ -69,6 +71,7 @@ export const PERSONA_HINTS: Record<Dealer["persona"], string> = {
   lowballer: "Suspiciously cheap, vague on details",
   upseller: "Piles on fees beyond base rent",
   firm: "Transparent, market-rate, barely moves",
+  human: "Real dealer — role-play or assign a persona",
 };
 
 function t(line: number, speaker: TranscriptLine["speaker"], text: string): TranscriptLine {
@@ -133,6 +136,12 @@ export const MOCK_TRANSCRIPTS: Record<Dealer["persona"], TranscriptLine[]> = {
     t(9, "negotiator", "Excellent. I'm logging: 110,000 rent, 2 months advance, 55,000 commission, 5,000 maintenance, 5 percent increment, written quote available."),
     t(10, "dealer", "Correct. I'll email the draft. Good day."),
   ],
+  human: [
+    t(1, "negotiator", "Assalam-o-Alaikum, I'm calling about a 400 square foot ground-floor shop in Gulberg for a client."),
+    t(2, "dealer", "Walaikum salam. Yes, send me the requirements — I'll check with the owners and call you back."),
+    t(3, "negotiator", "I'll share the spec. When should I follow up?"),
+    t(4, "dealer", "Tomorrow afternoon. Khuda hafiz."),
+  ],
 };
 
 export const MOCK_OUTCOMES: Record<Dealer["persona"], CallOutcome> = {
@@ -140,6 +149,7 @@ export const MOCK_OUTCOMES: Record<Dealer["persona"], CallOutcome> = {
   lowballer: "quote",
   upseller: "quote",
   firm: "quote",
+  human: "callback",
 };
 
 // total_first_year = 12*rent + advance_months*rent + commission + 12*maintenance
