@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DealerCard from "@/components/calls/DealerCard";
 import CallStatusPanel from "@/components/calls/CallStatusPanel";
@@ -14,6 +14,7 @@ export default function CallCenterPage() {
   const params = useParams<{ spec_id: string }>();
   const specId = params.spec_id;
   const searchParams = useSearchParams();
+  const router = useRouter();
   const {
     dealers,
     dealersError,
@@ -53,6 +54,12 @@ export default function CallCenterPage() {
     const s = stateFor(d.id).state;
     return s === "idle" || s === "failed";
   });
+  // terminal = done or failed; "calling"/"live" mean this round isn't over yet
+  const allTerminal =
+    !!dealers && dealers.length > 0 && dealers.every((d) => {
+      const s = stateFor(d.id).state;
+      return s === "done" || s === "failed";
+    });
 
   const selectedDealer = dealers?.find((d) => d.id === selected) ?? null;
 
@@ -72,9 +79,19 @@ export default function CallCenterPage() {
             calls live; quotes land here as they are logged.
           </p>
         </div>
-        <Button onClick={callAll} disabled={!dealers || !anyIdle}>
-          Call all dealers
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button onClick={callAll} disabled={!dealers || !anyIdle}>
+            Call all dealers
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={!allTerminal}
+            title={allTerminal ? undefined : "Every dealer needs a done/declined/failed call first"}
+            onClick={() => router.push(`/report/${encodeURIComponent(specId)}`)}
+          >
+            View report
+          </Button>
+        </div>
       </div>
 
       {/* states */}
