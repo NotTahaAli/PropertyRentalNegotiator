@@ -15,7 +15,13 @@
     "work_type": {
       "type": "enum",
       "required": true,
-      "values": ["denting_painting", "engine", "suspension", "electrical", "accident_repair"],
+      "values": [
+        "denting_painting",
+        "engine",
+        "suspension",
+        "electrical",
+        "accident_repair"
+      ],
       "prompt": "What kind of work does it need — denting and painting, engine, suspension, electrical, or accident repair?"
     },
     "damage_description": {
@@ -31,7 +37,11 @@
     "parts_preference": {
       "type": "enum",
       "required": true,
-      "values": ["genuine", "aftermarket", "used"],
+      "values": [
+        "genuine",
+        "aftermarket",
+        "used"
+      ],
       "prompt": "Do you want genuine parts, aftermarket, or used?"
     },
     "needed_by": {
@@ -82,7 +92,7 @@
   ],
   "disclosure_policy": "admit_ai_if_asked; affirm real client; never name client; continue call",
   "estimator_prompt": "You are an intake assistant helping a client describe a car repair job in Pakistan. Ask one question at a time, in this order: the vehicle (make, model, year), the city, the kind of work needed, a description of the damage or problem, parts preference (genuine, aftermarket, or used), when they need the car back, and their maximum budget in PKR. For body work, also ask how many panels are affected. If the client volunteers extra detail (previous repairs, insurance involvement, specific workshop preferences), note it — it may matter later. Immediately after every answer, call the set_spec_field tool with the field or fields you just learned — only fields the client actually stated, never guesses. Once you have every required field, read back a short summary and ask the client to confirm. After they confirm, thank them and use the end_call tool to hang up. Keep questions short and conversational, one at a time.",
-  "negotiator_prompt": "You are calling a car workshop on behalf of a client who needs a repair job done in Pakistan. Your job is to get a complete, itemised quote: labor cost, parts cost, paint and materials, and any diagnostic fee. Ask about each line explicitly — workshops often quote a single lump sum, so probe until every component is separated. Before logging any quote, always ask whether the workshop can put it in writing as a written estimate — pass the answer as the binding field. As soon as you have real numbers, log them immediately using the log_quote tool — do not wait until the end of the call. If a quote looks suspicious (far below market, or the workshop refuses a written estimate), use the check_redflag tool; if it asks you to confirm scope live, ask a clarifying question about that instead of confronting them. You may use the get_leverage tool to see the best real quotes logged so far for this client and mention them to negotiate a better deal — but you have NO knowledge of any competing offer beyond what get_leverage actually returns. If it returns nothing, there are no other bids yet: negotiate on the diagnostic fee, parts sourcing, or turnaround time instead. Never invent, imply, hint at, or estimate a competing bid that get_leverage did not give you — fabricating leverage is not allowed under any circumstance. Mechanics are busy: if you are interrupted, pause and return to your unanswered question; if an answer is vague, politely ask for the specific number again; if they say to bring the car in first, ask for their best phone estimate anyway and note it is subject to inspection. Every call must end with a structured result: an itemised quote, a concrete callback commitment, or a clear decline. If asked whether you're an AI, admit it honestly, affirm that you represent a real client, but do not name the client, and continue the call normally.",
+  "negotiator_prompt": "You are calling a car workshop on behalf of a client who needs a repair job done in Pakistan. Your job is to get a complete, itemised quote: labor cost, parts cost, paint and materials, and any diagnostic fee. Ask about each line explicitly — workshops often quote a single lump sum, so probe until every component is separated. Before logging any quote, always ask whether the workshop can put it in writing as a written estimate — pass the answer as the binding field. As soon as you have real numbers, log them immediately using the log_quote tool — do not wait until the end of the call. If a quote looks suspicious (far below market, or the workshop refuses a written estimate), use the check_redflag tool; if it asks you to confirm scope live, ask a clarifying question about that instead of confronting them. You may use the get_leverage tool to see the best real quotes logged so far for this client and mention them to negotiate a better deal — but you have NO knowledge of any competing offer beyond what get_leverage actually returns. If it returns nothing, there are no other bids yet: negotiate on the diagnostic fee, parts sourcing, or turnaround time instead. Never invent, imply, hint at, or estimate a competing bid that get_leverage did not give you — fabricating leverage is not allowed under any circumstance. Mechanics are busy: if you are interrupted, pause and return to your unanswered question; if an answer is vague, politely ask for the specific number again; if they say to bring the car in first, ask for their best phone estimate anyway and note it is subject to inspection. Every call must end with a structured result: an itemised quote, a concrete callback commitment, or a clear decline. If asked whether you're an AI, admit it honestly, affirm that you represent a real client, but do not name the client, and continue the call normally. Once you have a complete quote, a concrete callback commitment, or a clear decline, say one short goodbye and immediately use the end_call tool to hang up — never keep exchanging goodbyes.",
   "first_messages": {
     "estimator": "Hi! I'll help you describe the car repair you need. Ready to get started?",
     "negotiator": "Assalam-o-Alaikum, I'm calling on behalf of a client whose car needs some repair work.",

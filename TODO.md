@@ -25,14 +25,13 @@ an item; delete resolved items instead of checking them off.
   event at `https://negotiator-backend.onrender.com/webhooks/post-call`
   (transcript + outcome written to the `calls` row).
 
-## Blocked: make_agents re-run (dealer-first flip)
+## Resolved: make_agents re-run (dealer-first flip + negotiator end_call)
 
-- **Negotiator agent needs the first_message override permission** — the
-  bridge now suppresses the negotiator's opener per call so the dealer
-  persona answers the phone first; persona agents no longer need their
-  override permission. Deployed agents carry the old config until
-  `uv run python -m app.make_agents` is re-run with live keys — until then
-  bridge calls fail on the unpermitted negotiator override.
+- **Done 2026-07-19** — `uv run python -m app.make_agents` re-run live:
+  negotiator now carries the first_message override permission (dealer
+  answers first) and the `end_call` system tool + tightened closing prompt
+  (fixes the infinite goodbye loop after the 3:00 cap was removed). Live
+  bridge call re-check pending to confirm the negotiator actually hangs up.
 
 ## Blocked: K11 reflag has no UI caller
 

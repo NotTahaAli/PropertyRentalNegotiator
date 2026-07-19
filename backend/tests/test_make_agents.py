@@ -90,18 +90,19 @@ def test_set_spec_field_created_as_client_tool():
     assert set(tool.parameters.properties.keys()) == set(config.spec_schema.keys())
 
 
-def test_only_estimator_gets_end_call_built_in_tool():
+def test_estimator_and_negotiator_get_end_call_built_in_tool():
     config = load_vertical()
     client = FakeClient()
 
     upsert_all(client, config, manifest={}, backend_base_url="http://x")
 
     by_name = {kwargs["name"]: kwargs for _agent_id, kwargs in client.conversational_ai.agents.created}
-    estimator_prompt = by_name["estimator"]["conversation_config"].agent.prompt
-    assert estimator_prompt.built_in_tools.end_call.name == "end_call"
-    assert estimator_prompt.built_in_tools.end_call.params.system_tool_type == "end_call"
-    for other in ("negotiator", "stonewaller", "lowballer", "upseller", "firm"):
-        prompt = by_name[other]["conversation_config"].agent.prompt
+    for caller in ("estimator", "negotiator"):
+        prompt = by_name[caller]["conversation_config"].agent.prompt
+        assert prompt.built_in_tools.end_call.name == "end_call"
+        assert prompt.built_in_tools.end_call.params.system_tool_type == "end_call"
+    for persona in ("stonewaller", "lowballer", "upseller", "firm"):
+        prompt = by_name[persona]["conversation_config"].agent.prompt
         assert prompt.built_in_tools is None
 
 

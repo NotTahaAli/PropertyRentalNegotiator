@@ -155,6 +155,10 @@ def build_agents(config: VerticalConfig) -> list[AgentDef]:
             llm=EXTRACTION_LLM,
             tool_names=list(NEGOTIATOR_TOOL_NAMES),
             allow_first_message_override=True,
+            # Without this the bridge call has no terminator: neither leg can
+            # hang up and the goodbye loops forever (was masked by the old
+            # 3:00 hard cap). The negotiator owns call closure.
+            end_call=True,
         ),
     ]
     for persona in PERSONA_NAMES:
