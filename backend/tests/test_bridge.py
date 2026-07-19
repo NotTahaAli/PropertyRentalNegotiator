@@ -29,31 +29,63 @@ def _pcm16(*samples: int) -> bytes:
     return struct.pack(f"<{len(samples)}h", *samples)
 
 
-def _unpack_wav(wav_bytes: bytes) -> list[int]:
+def _unpack_wav(wav_bytes: bytes) -> tuple[list[int], list[int]]:
     with wave.open(io.BytesIO(wav_bytes), "rb") as w:
-        assert w.getnchannels() == 1
+        assert w.getnchannels() == 2
         assert w.getsampwidth() == 2
         assert w.getframerate() == 16000
         frames = w.readframes(w.getnframes())
-    return list(struct.unpack(f"<{len(frames) // 2}h", frames))
+    samples = struct.unpack(f"<{len(frames) // 2}h", frames)
+    return list(samples[0::2]), list(samples[1::2])
 
 
-def test_mix_pcm_sums_and_clips():
-    neg = _pcm16(100, 20000, -20000)
-    dealer = _pcm16(50, 20000, -20000)
+def test_stereo_wav_puts_negotiator_left_dealer_right():
+    neg = _pcm16(100, 200, 300)
+    dealer = _pcm16(-1, -2, -3)
 
-    wav_bytes = bridge.mix_pcm(neg, dealer)
+    left, right = _unpack_wav(bridge.stereo_wav(neg, dealer))
 
-    assert _unpack_wav(wav_bytes) == [150, 32767, -32768]
+    assert left == [100, 200, 300]
+    assert right == [-1, -2, -3]
 
 
-def test_mix_pcm_handles_unequal_lengths():
+def test_stereo_wav_pads_unequal_lengths_with_silence():
     neg = _pcm16(100, 200, 300)
     dealer = _pcm16(10)
 
-    wav_bytes = bridge.mix_pcm(neg, dealer)
+    left, right = _unpack_wav(bridge.stereo_wav(neg, dealer))
 
-    assert _unpack_wav(wav_bytes) == [110, 200, 300]
+    assert left == [100, 200, 300]
+    assert right == [10, 0, 0]
+
+
+def test_add_audio_pads_both_legs_on_turn_switch():
+    sink = bridge.CallSink(call_id="call-1")
+    sink.start = __import__("time").monotonic() + 100  # future: wall clock never pads in test
+
+    sink.add_audio("negotiator", _pcm16(1, 2, 3))
+    sink.add_audio("negotiator", _pcm16(4))  # same turn: contiguous
+    sink.add_audio("dealer", _pcm16(9))  # turn switch: dealer starts after negotiator ends
+
+    assert bytes(sink.pcm["negotiator"]) == _pcm16(1, 2, 3, 4)
+    assert bytes(sink.pcm["dealer"]) == _pcm16(0, 0, 0, 0, 9)
+
+
+def test_add_audio_turns_never_overlap_in_stereo_output():
+    sink = bridge.CallSink(call_id="call-1")
+    sink.start = __import__("time").monotonic() + 100
+
+    sink.add_audio("negotiator", _pcm16(1, 1))
+    sink.add_audio("dealer", _pcm16(2, 2))
+    sink.add_audio("negotiator", _pcm16(3, 3))
+
+    left, right = _unpack_wav(
+        bridge.stereo_wav(bytes(sink.pcm["negotiator"]), bytes(sink.pcm["dealer"]))
+    )
+    # at every frame at most one leg is non-silent
+    assert all(l == 0 or r == 0 for l, r in zip(left, right))
+    assert left == [1, 1, 0, 0, 3, 3]
+    assert right == [0, 0, 2, 2, 0, 0]
 
 
 def test_accumulate_transcript_labels_two_speakers_and_dedupes():
@@ -194,10 +226,33 @@ def test_relay_buffers_pcm_for_mix():
     )
     dst = FakeWebSocket()
     sink = bridge.CallSink(call_id="call-1")
+    sink.start = __import__("time").monotonic() + 100  # no wall-clock lead silence in test
 
     asyncio.run(bridge.relay_loop(src, dst, "negotiator", sink))
 
     assert bytes(sink.pcm["negotiator"]) == raw_pcm
+
+
+def test_relay_publishes_leg_tagged_audio():
+    from app import live
+
+    audio_b64 = base64.b64encode(b"\x01\x00").decode()
+    src = FakeWebSocket(
+        [json.dumps({"type": "audio", "audio_event": {"audio_base_64": audio_b64, "event_id": 1}})]
+    )
+    dst = FakeWebSocket()
+    sink = bridge.CallSink(call_id="call-pub")
+
+    async def scenario():
+        queue = live.subscribe("call-pub")
+        try:
+            await bridge.relay_loop(src, dst, "dealer", sink)
+            return queue.get_nowait()
+        finally:
+            live.unsubscribe("call-pub", queue)
+
+    msg = asyncio.run(scenario())
+    assert json.loads(msg) == {"leg": "dealer", "audio": audio_b64}
 
 
 def test_relay_records_vad_scores_per_leg():

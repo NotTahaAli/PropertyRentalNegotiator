@@ -56,6 +56,14 @@ an item; delete resolved items instead of checking them off.
 
 ## Open: manual click-throughs
 
+- **Live-audio player + stereo recording browser check** — `LiveAudio.tsx`
+  (leg-tagged WS stream, Web Audio, panned L/R, per-leg mute) and the new
+  time-aligned stereo recording are unit-tested + build-clean but not yet
+  heard in a browser. Needs one real bridge call on `/calls/[spec_id]`:
+  confirm both voices audible live while the call runs, then replay the
+  recording and confirm negotiator left / dealer right with no overlap.
+  If the browser blocks autoplay, clicking either mute button unlocks it.
+
 - **Live voice intake click-through** — voice path fully wired
   (`set_spec_field` client tool + `end_call` live on the Estimator,
   `VoiceIntake.tsx` on `@elevenlabs/react`), but nobody has run a real

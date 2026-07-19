@@ -155,8 +155,11 @@ Assumptions made while B slept:
    `transcript_json` at call end; UI polls `GET /calls/{id}` every 2s. Mock
    streams lines on a timer for the demo. Swap point if B adds a text WS:
    `runRealCall` internals in `useCallCenter.ts` only.
-2. Live-audio WS (`/calls/{id}/stream`, base64 PCM-16k) exists but is NOT
-   wired into K9 v1 — needs an AudioWorklet PCM player, deferred.
+2. ~~Live-audio WS (`/calls/{id}/stream`, base64 PCM-16k) exists but is NOT
+   wired into K9 v1~~ — RESOLVED: stream now leg-tagged JSON `{leg, audio}`;
+   `LiveAudio.tsx` plays both legs via Web Audio (panned L/R, per-leg mute),
+   mounted in CallStatusPanel for live bridge calls. Recording is now
+   time-aligned stereo (left=negotiator, right=dealer), no overlap.
 3. Roleplay = embed the negotiator agent (human answers as dealer) using
    `/calls/start` mode=roleplay response; UI ships a placeholder panel until
    the widget dynamic-variables attribute is verified.
